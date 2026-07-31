@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "87292835485",
+    "project_id": "flowdo-fdb67",
+    "storage_bucket": "flowdo-fdb67.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:87292835485:android:80a5bd5cbc0a570783c674",
+        "android_client_info": {
+          "package_name": "com.example.flowdo"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "87292835485-o4o1lb0s66j3d5tijm3tou0j747reorl.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCg7roMMIhczERTDmwGKIpQgdlCwOpNF6M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "87292835485-o4o1lb0s66j3d5tijm3tou0j747reorl.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "87292835485-cfknlahj5hktmjp6bg3bq9dgdcl150jo.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.flowdo"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
