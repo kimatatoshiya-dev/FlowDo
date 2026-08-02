@@ -5,19 +5,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flowdo/main.dart';
 import 'package:flowdo/services/analytics/noop_analytics_service.dart';
 import 'package:flowdo/services/auth/noop_auth_service.dart';
+import 'package:flowdo/services/tasks/local_task_repository.dart';
 import 'package:flowdo/widgets/category_bar.dart';
 
 void main() {
   const analyticsService = NoOpAnalyticsService();
   const authService = NoOpAuthService();
+  final taskRepository = LocalTaskRepository();
 
   testWidgets('FlowDo が起動して入力欄を表示する', (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
 
     await tester.pumpWidget(
-      const FlowDoApp(
+      FlowDoApp(
         analyticsService: analyticsService,
         authService: authService,
+        taskRepository: taskRepository,
       ),
     );
     await tester.pumpAndSettle();
@@ -38,7 +41,7 @@ void main() {
   testWidgets('入力開始で入力例が消える', (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
 
-    await tester.pumpWidget(const FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService()));
+    await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('ジムへ19時に行く'), findsOneWidget);
@@ -56,7 +59,7 @@ void main() {
     SharedPreferences.resetStatic();
     SharedPreferences.setMockInitialValues({});
 
-    await tester.pumpWidget(const FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService()));
+    await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 100));
       if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
@@ -96,7 +99,7 @@ void main() {
     SharedPreferences.resetStatic();
     SharedPreferences.setMockInitialValues({});
 
-    await tester.pumpWidget(const FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService()));
+    await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 100));
       if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
@@ -133,7 +136,7 @@ void main() {
     SharedPreferences.resetStatic();
     SharedPreferences.setMockInitialValues({});
 
-    await tester.pumpWidget(const FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService()));
+    await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 100));
       if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
@@ -163,7 +166,7 @@ void main() {
   testWidgets('カテゴリー追加後も Red Screen にならない', (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
 
-    await tester.pumpWidget(const FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService()));
+    await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
     await tester.pumpAndSettle();
 
     final addChip = find.byKey(const ValueKey('category_add_chip'));
@@ -191,7 +194,7 @@ void main() {
   testWidgets('カテゴリーフィルターに未分類は表示しない', (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
 
-    await tester.pumpWidget(const FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService()));
+    await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
     await tester.pumpAndSettle();
 
     expect(
@@ -214,7 +217,7 @@ void main() {
     SharedPreferences.resetStatic();
     SharedPreferences.setMockInitialValues({});
 
-    await tester.pumpWidget(const FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService()));
+    await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 100));
       if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {

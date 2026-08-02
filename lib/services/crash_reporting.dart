@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../firebase_options.dart';
+import '../debug/startup_trace.dart';
 import 'analytics/analytics_service.dart';
 
 /// Crashlytics は Release ビルドのみ Firebase へ送信する
@@ -17,11 +18,14 @@ bool get isMonitoringEnabled => isCrashReportingEnabled;
 
 /// Firebase 初期化・Crashlytics・Analytics をセットアップする
 Future<AnalyticsService> initializeAppMonitoring() async {
+  startupTrace('Firebase.initializeApp() starting');
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    startupTrace('Firebase.initializeApp() done', 'apps=${Firebase.apps.length}');
   } catch (error, stack) {
+    startupTrace('Firebase.initializeApp() FAILED', error);
     debugPrint('Firebase initialization failed: $error');
     debugPrint(stack.toString());
     _installDebugErrorHandlers();
@@ -29,11 +33,17 @@ Future<AnalyticsService> initializeAppMonitoring() async {
   }
 
   try {
+    startupTrace('FirebaseAnalytics.setAnalyticsCollectionEnabled() starting');
     await FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(true);
+    startupTrace('FirebaseAnalytics.setAnalyticsCollectionEnabled() done');
+    startupTrace('_initializeCrashlytics() starting');
     await _initializeCrashlytics();
+    startupTrace('_initializeCrashlytics() done');
 
+    startupTrace('initializeAppMonitoring() returning FirebaseAnalyticsService');
     return FirebaseAnalyticsService(FirebaseAnalytics.instance);
   } catch (error, stack) {
+    startupTrace('initializeAppMonitoring() post-init FAILED', error);
     debugPrint('App monitoring initialization failed: $error');
     debugPrint(stack.toString());
     _installDebugErrorHandlers();
@@ -56,6 +66,7 @@ Future<void> _initializeCrashlytics() async {
 
 /// runZonedGuarded から呼び出す（Non-Fatal）
 void reportZonedError(Object error, StackTrace stack) {
+  startupTrace('reportZonedError', error);
   if (isCrashReportingEnabled) {
     unawaited(
       FirebaseCrashlytics.instance.recordError(
@@ -203,7 +214,7 @@ void _installDebugErrorHandlers() {
 void _installGracefulErrorWidget() {
   ErrorWidget.builder = (details) {
     return Material(
-      color: Colors.transparent,
+      color: const Color(0xFFF2F2F7),
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),

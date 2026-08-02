@@ -5,19 +5,27 @@ import UIKit
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   override init() {
     super.init()
+    NSLog("[FlowDoNativeStartup] AppDelegate.init start")
     #if DEBUG
     FirebaseAnalyticsDebugMode.enableIfNeeded()
+    NSLog("[FlowDoNativeStartup] AppDelegate.init FirebaseAnalyticsDebugMode done")
     #endif
+    NSLog("[FlowDoNativeStartup] AppDelegate.init end")
   }
 
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    NSLog("[FlowDoNativeStartup] AppDelegate.didFinishLaunching start")
+    let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    NSLog("%@", "[FlowDoNativeStartup] AppDelegate.didFinishLaunching end result=\(result)")
+    return result
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+    NSLog("[FlowDoNativeStartup] AppDelegate.didInitializeImplicitFlutterEngine start")
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    NSLog("[FlowDoNativeStartup] AppDelegate.didInitializeImplicitFlutterEngine plugins registered")
   }
 }

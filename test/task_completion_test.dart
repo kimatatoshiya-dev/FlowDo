@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flowdo/main.dart';
 import 'package:flowdo/services/analytics/noop_analytics_service.dart';
 import 'package:flowdo/services/auth/noop_auth_service.dart';
+import 'package:flowdo/services/tasks/local_task_repository.dart';
 import 'package:flowdo/models/task.dart';
 import 'package:flowdo/widgets/task_tile.dart';
 
@@ -17,7 +18,7 @@ Future<void> _pumpFlowDoWithTasks(WidgetTester tester, List<Task> tasks) async {
   });
   Task.syncNextId(tasks);
 
-  await tester.pumpWidget(const FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService()));
+  await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
   for (var i = 0; i < 30; i++) {
     await tester.pump(const Duration(milliseconds: 100));
     if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {

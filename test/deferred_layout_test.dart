@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flowdo/main.dart';
 import 'package:flowdo/services/analytics/noop_analytics_service.dart';
 import 'package:flowdo/services/auth/noop_auth_service.dart';
+import 'package:flowdo/services/tasks/local_task_repository.dart';
 import 'package:flowdo/models/category_item.dart';
 import 'package:flowdo/models/task.dart';
 import 'package:flowdo/widgets/category_bar.dart';
@@ -77,7 +78,7 @@ void main() {
     });
     Task.syncNextId([Task(id: 0, title: 'x', isInbox: false)]);
 
-    await tester.pumpWidget(const FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService()));
+    await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
     await _pumpFlowDo(tester);
 
     expect(find.text('仕事'), findsWidgets);
@@ -130,7 +131,7 @@ void main() {
       Task(id: 1, title: 'b', isInbox: false),
     ]);
 
-    await tester.pumpWidget(const FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService()));
+    await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
     await _pumpFlowDo(tester);
 
     await tester.ensureVisible(_taskTitle('優先度テスト'));

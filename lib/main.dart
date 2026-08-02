@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'app_bootstrap.dart';
+import 'debug/startup_trace.dart';
 import 'models/category_item.dart';
 import 'models/task.dart';
 import 'models/task_priority.dart';
@@ -19,6 +20,7 @@ import 'services/analytics/analytics_service.dart';
 import 'services/crash_reporting.dart' show reportZonedError;
 import 'services/feedback_service.dart';
 import 'services/task_organizer_service.dart';
+import 'services/tasks/task_repository.dart';
 import 'theme/app_theme.dart';
 import 'widgets/auth_gate.dart';
 import 'widgets/category_bar.dart';
@@ -29,19 +31,69 @@ import 'widgets/task_input_bar.dart';
 import 'widgets/task_tile.dart';
 
 Future<void> main() async {
+  startupTrace('main() entered');
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
-      final bootstrap = await bootstrapApp();
-      runApp(
-        FlowDoApp(
-          analyticsService: bootstrap.analyticsService,
-          authService: bootstrap.authService,
-        ),
-      );
+      startupTrace('WidgetsFlutterBinding.ensureInitialized done');
+      try {
+        startupTrace('bootstrapApp() starting');
+        final bootstrap = await bootstrapApp().timeout(
+          const Duration(seconds: 30),
+          onTimeout: () => throw TimeoutException(
+            'App bootstrap timed out after 30 seconds',
+          ),
+        );
+        startupTrace('bootstrapApp() completed');
+        runApp(
+          FlowDoApp(
+            analyticsService: bootstrap.analyticsService,
+            authService: bootstrap.authService,
+            taskRepository: bootstrap.taskRepository,
+          ),
+        );
+        startupTrace('runApp(FlowDoApp) called');
+      } catch (error, stackTrace) {
+        startupTrace('bootstrapApp() FAILED', error);
+        debugPrint('App bootstrap failed: $error');
+        debugPrint(stackTrace.toString());
+        runApp(BootstrapErrorApp(error: error));
+        startupTrace('runApp(BootstrapErrorApp) called');
+      }
     },
     reportZonedError,
   );
+}
+
+/// Firebase 初期化失敗時に白画面にならないようエラーを表示する
+class BootstrapErrorApp extends StatelessWidget {
+  const BootstrapErrorApp({super.key, required this.error});
+
+  final Object error;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'FlowDo を起動できませんでした',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                Text('$error'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class FlowDoApp extends StatefulWidget {
@@ -49,10 +101,12 @@ class FlowDoApp extends StatefulWidget {
     super.key,
     required this.analyticsService,
     required this.authService,
+    required this.taskRepository,
   });
 
   final AnalyticsService analyticsService;
   final AuthService authService;
+  final TaskRepository taskRepository;
 
   @override
   State<FlowDoApp> createState() => _FlowDoAppState();
@@ -69,12 +123,15 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    startupTrace('FlowDoApp.initState');
     WidgetsBinding.instance.addObserver(this);
     _sessionStartedAt = DateTime.now();
     unawaited(widget.analyticsService.logAppOpen());
     unawaited(
       runAfterFirstFrame(() async {
+        startupTrace('FlowDoApp.runAfterFirstFrame callback start');
         await bootstrapAppStorage();
+        startupTrace('FlowDoApp.bootstrapAppStorage done');
         if (await AppStorage.consumeFirstLaunchForAnalytics()) {
           unawaited(widget.analyticsService.logFirstLaunch());
         }
@@ -83,6 +140,7 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
           _restoreFeedbackPreferences(),
           _restoreCompletedTaskRetention(),
         ]);
+        startupTrace('FlowDoApp.runAfterFirstFrame callback done');
       }),
     );
   }
@@ -210,6 +268,7 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    startupTrace('FlowDoApp.build');
     return MaterialApp(
       title: 'FlowDo',
       debugShowCheckedModeBanner: false,
@@ -236,6 +295,7 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
           onCompletedTaskRetentionChanged: _setCompletedTaskRetention,
           analyticsService: widget.analyticsService,
           authService: widget.authService,
+          taskRepository: widget.taskRepository,
         ),
       ),
     );
@@ -254,6 +314,7 @@ class FlowDoHomePage extends StatefulWidget {
     required this.onCompletedTaskRetentionChanged,
     required this.analyticsService,
     required this.authService,
+    required this.taskRepository,
   });
 
   final ThemeMode themeMode;
@@ -265,6 +326,7 @@ class FlowDoHomePage extends StatefulWidget {
   final ValueChanged<CompletedTaskRetention> onCompletedTaskRetentionChanged;
   final AnalyticsService analyticsService;
   final AuthService authService;
+  final TaskRepository taskRepository;
 
   @override
   State<FlowDoHomePage> createState() => _FlowDoHomePageState();
@@ -305,16 +367,39 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   bool _isOrganizing = false;
   Timer? _keyboardScrollTimer;
   bool _isScrollingToInput = false;
+  StreamSubscription<List<Task>>? _taskSubscription;
 
   @override
   void initState() {
     super.initState();
+    startupTrace('FlowDoHomePage.initState');
     WidgetsBinding.instance.addObserver(this);
     unawaited(widget.analyticsService.logScreenView(AnalyticsScreen.home));
     unawaited(
       runAfterFirstFrame(() async {
+        startupTrace('FlowDoHomePage.runAfterFirstFrame callback start');
         await bootstrapAppStorage();
-        await _loadData();
+        startupTrace('FlowDoHomePage.bootstrapAppStorage done');
+        startupTrace('FlowDoHomePage.watchTasks() subscribing');
+        _taskSubscription = widget.taskRepository.watchTasks().listen(
+          (tasks) {
+            startupTrace(
+              'FlowDoHomePage.watchTasks first/event',
+              '${tasks.length} task(s)',
+            );
+            _applyTasksFromRepository(tasks);
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            startupTrace('FlowDoHomePage.watchTasks onError', error);
+            debugPrint('Task stream failed: $error');
+            debugPrint(stackTrace.toString());
+            if (!mounted) return;
+            setState(() => _isLoading = false);
+          },
+        );
+        startupTrace('FlowDoHomePage.watchTasks subscribed');
+        await _loadMetadata();
+        startupTrace('FlowDoHomePage._loadMetadata done');
       }),
     );
     _searchController.addListener(() {
@@ -340,6 +425,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _taskSubscription?.cancel();
     _keyboardScrollTimer?.cancel();
     _layoutChangeTimer?.cancel();
     _scrollController.dispose();
@@ -502,42 +588,46 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     }
   }
 
-  Future<void> _loadData() async {
+  void _applyTasksFromRepository(List<Task> tasks) {
+    startupTrace('_applyTasksFromRepository', '${tasks.length} task(s)');
+    if (!mounted) return;
+
+    CompletedTaskCleanup.backfillCompletionTimestamps(tasks);
+    final retainedTasks = CompletedTaskCleanup.filterExpired(
+      tasks,
+      widget.completedTaskRetention,
+    );
+
+    setState(() {
+      _tasks
+        ..clear()
+        ..addAll(retainedTasks);
+      _isLoading = false;
+    });
+
+    if (retainedTasks.length != tasks.length) {
+      unawaited(widget.taskRepository.syncTasks(_tasks));
+    }
+  }
+
+  Future<void> _loadMetadata() async {
     try {
       final results = await Future.wait([
-        AppStorage.loadTasks(),
         AppStorage.loadCategories(),
         AppStorage.loadLastRegistrationCategoryId(),
       ]);
       if (!mounted) return;
 
-      final tasks = results[0] as List<Task>;
-      CompletedTaskCleanup.backfillCompletionTimestamps(tasks);
-      final retainedTasks = CompletedTaskCleanup.filterExpired(
-        tasks,
-        widget.completedTaskRetention,
-      );
-
       setState(() {
-        _tasks
-          ..clear()
-          ..addAll(retainedTasks);
-        _categories = results[1] as List<CategoryItem>;
-        _lastRegistrationCategoryId = results[2] as String?;
-        _isLoading = false;
+        _categories = results[0] as List<CategoryItem>;
+        _lastRegistrationCategoryId = results[1] as String?;
       });
-
-      if (retainedTasks.length != tasks.length) {
-        await AppStorage.saveTasks(_tasks);
-      }
     } catch (error, stack) {
-      debugPrint('Failed to load app data: $error');
+      debugPrint('Failed to load app metadata: $error');
       debugPrint(stack.toString());
       if (!mounted) return;
       setState(() {
-        _tasks.clear();
         _categories = CategoryItem.defaults();
-        _isLoading = false;
       });
     }
   }
@@ -571,7 +661,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     if (!mounted) return;
     setState(update);
     try {
-      await AppStorage.saveTasks(_tasks);
+      await widget.taskRepository.syncTasks(_tasks);
     } catch (error, stack) {
       debugPrint('Failed to save tasks: $error');
       debugPrint(stack.toString());
@@ -1071,6 +1161,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
 
   @override
   Widget build(BuildContext context) {
+    startupTrace('FlowDoHomePage.build', '_isLoading=$_isLoading');
     final colors = Theme.of(context).extension<FlowDoColors>()!;
     final recentTasks = _recentlyAddedTasks();
     final pendingTasks = _filteredTasks(completed: false);

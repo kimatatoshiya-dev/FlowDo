@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flowdo/app_bootstrap.dart';
 import 'package:flowdo/services/analytics/noop_analytics_service.dart';
 import 'package:flowdo/services/auth/noop_auth_service.dart';
+import 'package:flowdo/services/tasks/task_repository.dart';
 import 'package:flowdo/services/crash_reporting.dart';
 
 void main() {
@@ -16,6 +17,7 @@ void main() {
 
     expect(bootstrap.analyticsService, isA<NoOpAnalyticsService>());
     expect(bootstrap.authService, isA<NoOpAuthService>());
+    expect(bootstrap.taskRepository, isA<AuthAwareTaskRepository>());
   });
 
   test('Debug ビルドでは Crashlytics のみ無効', () {

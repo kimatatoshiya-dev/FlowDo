@@ -6,6 +6,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../services/auth/auth_service.dart';
 import '../services/auth/auth_sign_in_debug.dart';
+import '../debug/startup_trace.dart';
 import '../theme/app_theme.dart';
 import '../widgets/flowdo_mark.dart';
 
@@ -30,11 +31,14 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void initState() {
     super.initState();
+    startupTrace('LoginPage.initState');
     unawaited(_loadAppleAvailability());
   }
 
   Future<void> _loadAppleAvailability() async {
+    startupTrace('LoginPage._loadAppleAvailability starting');
     final available = await widget.authService.isAppleSignInAvailable;
+    startupTrace('LoginPage._loadAppleAvailability done', 'available=$available');
     if (!mounted) return;
     setState(() => _appleSignInAvailable = available);
   }
@@ -72,6 +76,7 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    startupTrace('LoginPage.build');
     final colors = Theme.of(context).extension<FlowDoColors>()!;
     final colorScheme = Theme.of(context).colorScheme;
 
