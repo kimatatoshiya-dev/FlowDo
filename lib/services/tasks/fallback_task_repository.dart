@@ -69,11 +69,15 @@ Stream<List<Task>> watchTasks() async* {
       );
 
     @override
-  Future<void> updateTask(Task task) => _runVoid(
-        'updateTask',
-        () => _primary.updateTask(task),
-        () => _fallback.updateTask(task),
-      );
+  Future<void> updateTask(Task task) async {
+    try {
+      await _withTimeout(_primary.updateTask(task));
+      await _fallback.updateTask(task);
+    } catch (error, stackTrace) {
+      _logFallback('updateTask', error, stackTrace);
+      await _fallback.updateTask(task);
+    }
+  }
 
   @override
   Future<void> deleteTask(int taskId) => _runVoid(
@@ -83,11 +87,15 @@ Stream<List<Task>> watchTasks() async* {
       );
 
   @override
-  Future<void> syncTasks(List<Task> tasks) => _runVoid(
-        'syncTasks',
-        () => _primary.syncTasks(tasks),
-        () => _fallback.syncTasks(tasks),
-      );
+  Future<void> syncTasks(List<Task> tasks) async {
+    try {
+      await _withTimeout(_primary.syncTasks(tasks));
+      await _fallback.syncTasks(tasks);
+    } catch (error, stackTrace) {
+      _logFallback('syncTasks', error, stackTrace);
+      await _fallback.syncTasks(tasks);
+    }
+  }
 
   Future<T> _withTimeout<T>(Future<T> future) {
     return future.timeout(

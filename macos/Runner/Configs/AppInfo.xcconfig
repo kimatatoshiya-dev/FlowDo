@@ -10,5 +10,9 @@ PRODUCT_NAME = flowdo
 // The application's bundle identifier
 PRODUCT_BUNDLE_IDENTIFIER = com.example.flowdo
 
+// Development signing (required for keychain-access-groups / Google Sign-In)
+DEVELOPMENT_TEAM = X9295J75DF
+CODE_SIGN_IDENTITY = Apple Development
+
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.

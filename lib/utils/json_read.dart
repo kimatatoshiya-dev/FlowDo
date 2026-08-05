@@ -16,7 +16,6 @@ class JsonRead {
   }
 
   static bool boolean(dynamic value, {bool fallback = false}) {
-    if (value is bool) return value;
-    return fallback;
+    return value as bool? ?? fallback;
   }
 }

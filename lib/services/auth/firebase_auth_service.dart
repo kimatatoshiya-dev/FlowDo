@@ -127,8 +127,8 @@ class FirebaseAuthService implements AuthService {
     if (_googleSignInInitialized) return;
     try {
       await GoogleSignIn.instance.initialize(
-        clientId: Platform.isIOS
-            ? DefaultFirebaseOptions.ios.iosClientId
+        clientId: Platform.isIOS || Platform.isMacOS
+            ? DefaultFirebaseOptions.currentPlatform.iosClientId
             : null,
         serverClientId: kFirebaseAuthWebClientId,
       );

@@ -38,8 +38,8 @@ class FeedbackPreferences {
 
   factory FeedbackPreferences.fromJson(Map<String, dynamic> json) {
     return FeedbackPreferences(
-      soundEnabled: json['soundEnabled'] == true,
-      hapticEnabled: json['hapticEnabled'] != false,
+      soundEnabled: json['soundEnabled'] as bool? ?? false,
+      hapticEnabled: json['hapticEnabled'] as bool? ?? true,
     );
   }
 }

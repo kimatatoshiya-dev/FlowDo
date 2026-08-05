@@ -90,7 +90,7 @@ class CategoryItem {
       id: id,
       name: name,
       colorValue: colorValue,
-      isSystem: JsonRead.boolean(json['isSystem']),
+      isSystem: json['isSystem'] as bool? ?? false,
     );
   }
 

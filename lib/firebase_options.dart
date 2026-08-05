@@ -72,6 +72,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '87292835485',
     projectId: 'flowdo-fdb67',
     storageBucket: 'flowdo-fdb67.firebasestorage.app',
+    iosClientId:
+        '87292835485-cfknlahj5hktmjp6bg3bq9dgdcl150jo.apps.googleusercontent.com',
     iosBundleId: 'com.example.flowdo',
   );
 

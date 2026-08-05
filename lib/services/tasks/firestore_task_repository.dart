@@ -21,17 +21,22 @@ class FirestoreTaskRepository implements TaskRepository {
   @override
   Stream<List<Task>> watchTasks() {
     startupTrace('FirestoreTaskRepository.watchTasks() stream created', 'uid=$userId');
-    return _collection.orderBy('createdAt', descending: true).snapshots().map(
-      (snapshot) {
+    var purgingExpired = false;
+    return _collection.orderBy('createdAt', descending: true).snapshots().asyncMap(
+      (snapshot) async {
         startupTrace(
           'FirestoreTaskRepository.watchTasks() snapshot',
           'uid=$userId docs=${snapshot.docs.length}',
         );
-        final tasks = snapshot.docs
-            .map((doc) => Task.fromJson(doc.data()))
-            .toList(growable: false);
-        Task.syncNextId(tasks);
-        return tasks;
+        final tasks = _tasksFromSnapshot(snapshot);
+        final retained = await TaskRepositoryRetention.filterRetained(tasks);
+        await _purgeExpiredIfNeeded(
+          tasks: tasks,
+          retained: retained,
+          purgingExpired: () => purgingExpired,
+          setPurgingExpired: (value) => purgingExpired = value,
+        );
+        return retained;
       },
     );
   }
@@ -45,12 +50,18 @@ class FirestoreTaskRepository implements TaskRepository {
       'FirestoreTaskRepository.loadTasks() done',
       'uid=$userId docs=${snapshot.docs.length}',
     );
-    final tasks = snapshot.docs
-        .map((doc) => Task.fromJson(doc.data()))
-        .toList(growable: false);
-    Task.syncNextId(tasks);
-    return tasks;
+    final tasks = _tasksFromSnapshot(snapshot);
+    final retained = await TaskRepositoryRetention.filterRetained(tasks);
+    await _purgeExpiredIfNeeded(
+      tasks: tasks,
+      retained: retained,
+      purgingExpired: () => _loadPurgingExpired,
+      setPurgingExpired: (value) => _loadPurgingExpired = value,
+    );
+    return retained;
   }
+
+  bool _loadPurgingExpired = false;
 
   @override
   Future<void> createTask(Task task) async {
@@ -92,4 +103,32 @@ class FirestoreTaskRepository implements TaskRepository {
   }
 
   String _docId(int taskId) => taskId.toString();
+
+  List<Task> _tasksFromSnapshot(QuerySnapshot<Map<String, dynamic>> snapshot) {
+    final tasks = snapshot.docs
+        .map((doc) => Task.fromJson(_taskJson(doc)))
+        .toList(growable: false);
+    Task.syncNextId(tasks);
+    return tasks;
+  }
+
+  Future<void> _purgeExpiredIfNeeded({
+    required List<Task> tasks,
+    required List<Task> retained,
+    required bool Function() purgingExpired,
+    required void Function(bool value) setPurgingExpired,
+  }) async {
+    if (retained.length == tasks.length || purgingExpired()) return;
+
+    setPurgingExpired(true);
+    try {
+      await syncTasks(retained);
+    } finally {
+      setPurgingExpired(false);
+    }
+  }
+
+  Map<String, dynamic> _taskJson(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    return Map<String, dynamic>.from(doc.data());
+  }
 }

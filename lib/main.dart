@@ -352,6 +352,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   final Set<int> _layoutHighlightTaskIds = {};
   final Set<int> _layoutAnimatingTaskIds = {};
   final Set<int> _registrationFeedbackTaskIds = {};
+  final Map<int, bool> _pendingFavoriteByTaskId = {};
   static const _layoutChangeDelay = Duration(milliseconds: 2500);
   static const _layoutHighlightDelay = Duration(milliseconds: 400);
   static const _registrationFeedbackDuration = Duration(milliseconds: 500);
@@ -382,13 +383,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         startupTrace('FlowDoHomePage.bootstrapAppStorage done');
         startupTrace('FlowDoHomePage.watchTasks() subscribing');
         _taskSubscription = widget.taskRepository.watchTasks().listen(
-          (tasks) {
-            startupTrace(
-              'FlowDoHomePage.watchTasks first/event',
-              '${tasks.length} task(s)',
-            );
-            _applyTasksFromRepository(tasks);
-          },
+          _onWatchTaskSnapshot,
           onError: (Object error, StackTrace stackTrace) {
             startupTrace('FlowDoHomePage.watchTasks onError', error);
             debugPrint('Task stream failed: $error');
@@ -588,6 +583,17 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     }
   }
 
+  bool _isFavoriteUpdatePending(int taskId) =>
+      _pendingFavoriteByTaskId.containsKey(taskId);
+
+  void _onWatchTaskSnapshot(List<Task> tasks) {
+    startupTrace(
+      'FlowDoHomePage.watchTasks snapshot',
+      '${tasks.length} task(s)',
+    );
+    _applyTasksFromRepository(tasks);
+  }
+
   void _applyTasksFromRepository(List<Task> tasks) {
     startupTrace('_applyTasksFromRepository', '${tasks.length} task(s)');
     if (!mounted) return;
@@ -598,16 +604,59 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       widget.completedTaskRetention,
     );
 
+    final existingById = {for (final task in _tasks) task.id: task};
+
     setState(() {
       _tasks
         ..clear()
-        ..addAll(retainedTasks);
+        ..addAll([
+          for (final remote in retainedTasks)
+            _mergeTaskFromRemote(
+              remote: remote,
+              existing: existingById[remote.id],
+            ),
+        ]);
       _isLoading = false;
     });
 
     if (retainedTasks.length != tasks.length) {
       unawaited(widget.taskRepository.syncTasks(_tasks));
     }
+  }
+
+  Task _mergeTaskFromRemote({required Task remote, Task? existing}) {
+    final taskId = remote.id;
+    final favoriteUpdatePending = _isFavoriteUpdatePending(taskId);
+    final pendingFavorite = _pendingFavoriteByTaskId[taskId];
+
+    if (existing == null) {
+      if (favoriteUpdatePending && pendingFavorite != null) {
+        remote.isFavorite = pendingFavorite;
+      }
+      return remote;
+    }
+
+    existing
+      ..title = remote.title
+      ..isCompleted = remote.isCompleted
+      ..isInbox = remote.isInbox
+      ..categoryId = remote.categoryId
+      ..priorityStars = remote.priorityStars
+      ..dueDate = remote.dueDate
+      ..completedAt = remote.completedAt;
+
+    // Firestore snapshot must not overwrite isFavorite while an update is pending.
+    // Clear pending only after the remote document matches the intended value.
+    if (favoriteUpdatePending) {
+      if (pendingFavorite != null && remote.isFavorite == pendingFavorite) {
+        _pendingFavoriteByTaskId.remove(taskId);
+        existing.isFavorite = remote.isFavorite;
+      }
+    } else {
+      existing.isFavorite = remote.isFavorite;
+    }
+
+    return existing;
   }
 
   Future<void> _loadMetadata() async {
@@ -1040,6 +1089,41 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     );
   }
 
+  Future<void> _toggleFavorite(Task task) async {
+    debugPrint(
+      '[FlowDoFavorite] _toggleFavorite start taskId=${task.id} '
+      'isFavorite=${task.isFavorite}',
+    );
+    if (!mounted) return;
+
+    final index = _tasks.indexWhere((element) => element.id == task.id);
+    if (index < 0) return;
+
+    final target = _tasks[index];
+    final updatedFavorite = !target.isFavorite;
+
+    setState(() {
+      target.isFavorite = updatedFavorite;
+    });
+    _pendingFavoriteByTaskId[target.id] = updatedFavorite;
+
+    try {
+      debugPrint(
+        '[FlowDoFavorite] updateTask before taskId=${target.id} '
+        'isFavorite=${target.isFavorite} pending=$_pendingFavoriteByTaskId',
+      );
+      await widget.taskRepository.updateTask(target);
+    } catch (error, stack) {
+      debugPrint('Failed to update favorite: $error');
+      debugPrint(stack.toString());
+      if (!mounted) return;
+      setState(() {
+        target.isFavorite = !updatedFavorite;
+      });
+      _pendingFavoriteByTaskId.remove(target.id);
+    }
+  }
+
   Future<void> _cyclePriority(Task task) async {
     await _updateTasks(() {
       task.priorityStars = TaskPriorityStars.next(task.priorityStars);
@@ -1236,6 +1320,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                         onCategoryTap: _cycleCategory,
                         onPriorityTap: _cyclePriority,
                         onDueDateTap: _pickDueDate,
+                        onFavoriteTap: _toggleFavorite,
                       ),
                     ),
                   SliverToBoxAdapter(
@@ -1326,6 +1411,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                           onCategoryTap: _cycleCategory,
                           onPriorityTap: _cyclePriority,
                           onDueDateTap: _pickDueDate,
+                          onFavoriteTap: _toggleFavorite,
                         ),
                       ),
                     if (completedTasks.isNotEmpty)
@@ -1346,6 +1432,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                           onCategoryTap: _cycleCategory,
                           onPriorityTap: _cyclePriority,
                           onDueDateTap: _pickDueDate,
+                          onFavoriteTap: _toggleFavorite,
                         ),
                       ),
                   ],

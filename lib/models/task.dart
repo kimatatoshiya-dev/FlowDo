@@ -11,6 +11,7 @@ class Task {
     this.isInbox = true,
     this.categoryId = CategoryItem.uncategorizedId,
     this.priorityStars = TaskPriorityStars.none,
+    this.isFavorite = false,
     this.dueDate,
     this.completedAt,
     DateTime? createdAt,
@@ -22,6 +23,7 @@ class Task {
   bool isInbox;
   String categoryId;
   int priorityStars;
+  bool isFavorite;
   DateTime? dueDate;
   DateTime? completedAt;
   final DateTime createdAt;
@@ -80,6 +82,7 @@ class Task {
         'isInbox': isInbox,
         'categoryId': categoryId,
         'priorityStars': priorityStars,
+        'isFavorite': isFavorite,
         'dueDate': dueDate?.toIso8601String(),
         'completedAt': completedAt?.toIso8601String(),
         'createdAt': createdAt.toIso8601String(),
@@ -116,9 +119,6 @@ class Task {
       JsonRead.string(json['priority']),
     );
 
-    // 既存タスクは整理済みとして扱う
-    final isInbox = JsonRead.boolean(json['isInbox']);
-
     final id = JsonRead.integer(json['id']);
     final title = JsonRead.string(json['title']);
     if (id == null || title == null) {
@@ -128,10 +128,12 @@ class Task {
     return Task(
       id: id,
       title: title,
-      isCompleted: JsonRead.boolean(json['isCompleted']),
-      isInbox: isInbox,
+      isCompleted: json['isCompleted'] as bool? ?? false,
+      // 既存タスクは整理済みとして扱う
+      isInbox: json['isInbox'] as bool? ?? false,
       categoryId: categoryId,
       priorityStars: priorityStars.clamp(0, TaskPriorityStars.max),
+      isFavorite: json['isFavorite'] as bool? ?? false,
       dueDate: dueDate,
       completedAt: completedAt,
       createdAt: createdAt,

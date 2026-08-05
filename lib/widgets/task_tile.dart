@@ -25,6 +25,7 @@ class TaskTile extends StatelessWidget {
     required this.onCategoryTap,
     required this.onPriorityTap,
     required this.onDueDateTap,
+    required this.onFavoriteTap,
     this.showDivider = true,
     this.showCompletionToggle = true,
     this.showMetaChips = true,
@@ -46,6 +47,7 @@ class TaskTile extends StatelessWidget {
   final VoidCallback onCategoryTap;
   final VoidCallback onPriorityTap;
   final VoidCallback onDueDateTap;
+  final VoidCallback onFavoriteTap;
   final bool showDivider;
   final bool showCompletionToggle;
   final bool showMetaChips;
@@ -230,14 +232,23 @@ class TaskTile extends StatelessWidget {
                                       ),
                               ),
                               IconButton(
+                                tooltip: task.isFavorite
+                                    ? 'お気に入り解除'
+                                    : 'お気に入りに追加',
                                 icon: Icon(
-                                  Icons.more_horiz,
+                                  task.isFavorite
+                                      ? Icons.star
+                                      : Icons.star_border,
                                   size: _useCompletedVisual ? 20 : 24,
-                                  color: _useCompletedVisual
-                                      ? colors.secondaryLabel
-                                      : null,
+                                  color: task.isFavorite
+                                      ? const Color(0xFFFF9500).withValues(
+                                          alpha: _useCompletedVisual ? 0.65 : 1,
+                                        )
+                                      : _useCompletedVisual
+                                          ? colors.secondaryLabel
+                                          : null,
                                 ),
-                                onPressed: () => _showActions(context),
+                                onPressed: onFavoriteTap,
                                 visualDensity: VisualDensity.compact,
                                 padding: _useCompletedVisual
                                     ? const EdgeInsets.all(4)
@@ -417,42 +428,6 @@ class TaskTile extends StatelessWidget {
     );
   }
 
-  void _showActions(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.edit_outlined),
-              title: const Text('名前を編集'),
-              onTap: () {
-                Navigator.pop(context);
-                onEdit();
-              },
-            ),
-            ListTile(
-              leading: Icon(
-                Icons.delete_outline,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              title: Text(
-                '削除',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.error,
-                ),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                onDelete();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class _MetaTapChip extends StatelessWidget {
@@ -565,6 +540,7 @@ class GroupedTaskList extends StatelessWidget {
     required this.onCategoryTap,
     required this.onPriorityTap,
     required this.onDueDateTap,
+    required this.onFavoriteTap,
     this.showCompletionToggle = true,
     this.showMetaChips = true,
     this.openEditOnRowTap = false,
@@ -586,6 +562,7 @@ class GroupedTaskList extends StatelessWidget {
   final void Function(Task task) onCategoryTap;
   final void Function(Task task) onPriorityTap;
   final void Function(Task task) onDueDateTap;
+  final void Function(Task task) onFavoriteTap;
   final bool showCompletionToggle;
   final bool showMetaChips;
   final bool openEditOnRowTap;
@@ -650,6 +627,7 @@ class GroupedTaskList extends StatelessWidget {
                         onCategoryTap: () => onCategoryTap(tasks[i]),
                         onPriorityTap: () => onPriorityTap(tasks[i]),
                         onDueDateTap: () => onDueDateTap(tasks[i]),
+                        onFavoriteTap: () => onFavoriteTap(tasks[i]),
                         showDivider: false,
                       ),
                     ),
@@ -694,6 +672,7 @@ class GroupedTaskList extends StatelessWidget {
                         onCategoryTap: () => onCategoryTap(tasks[i]),
                         onPriorityTap: () => onPriorityTap(tasks[i]),
                         onDueDateTap: () => onDueDateTap(tasks[i]),
+                        onFavoriteTap: () => onFavoriteTap(tasks[i]),
                         showDivider: i < tasks.length - 1,
                       ),
                     ),
