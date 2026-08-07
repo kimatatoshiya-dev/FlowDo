@@ -17,7 +17,7 @@ import 'services/app_storage.dart';
 import 'services/auth/auth_service.dart';
 import 'services/completed_task_cleanup.dart';
 import 'services/analytics/analytics_service.dart';
-import 'services/crash_reporting.dart' show reportZonedError;
+import 'services/crash_reporting.dart' show installStartupErrorHandlers, reportZonedError;
 import 'services/feedback_service.dart';
 import 'services/task_organizer_service.dart';
 import 'services/tasks/task_repository.dart';
@@ -35,6 +35,7 @@ Future<void> main() async {
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      installStartupErrorHandlers();
       startupTrace('WidgetsFlutterBinding.ensureInitialized done');
       try {
         startupTrace('bootstrapApp() starting');
@@ -44,7 +45,7 @@ Future<void> main() async {
             'App bootstrap timed out after 30 seconds',
           ),
         );
-        startupTrace('bootstrapApp() completed');
+        startupTrace('bootstrapApp() completed (auth restored, storage warmed)');
         runApp(
           FlowDoApp(
             analyticsService: bootstrap.analyticsService,

@@ -40,9 +40,16 @@ Future<AppBootstrapResult> bootstrapApp() async {
     Firebase.apps.isNotEmpty ? 'FirebaseAuthService' : 'NoOpAuthService',
   );
   startupTrace(
-    'authService.currentUser',
+    'authService.currentUser (before restore)',
     authService.currentUser?.uid ?? 'null',
   );
+  startupTrace('waitForInitialAuthState() starting');
+  await authService.waitForInitialAuthState();
+  startupTrace(
+    'waitForInitialAuthState() done',
+    authService.currentUser?.uid ?? 'null',
+  );
+  await bootstrapAppStorage();
   final localTaskRepository = LocalTaskRepository();
   final taskRepository = AuthAwareTaskRepository(
     firestoreFactory: (userId) => FirestoreTaskRepository(userId: userId),

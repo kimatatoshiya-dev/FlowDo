@@ -24,6 +24,11 @@ class NoOpAuthService implements AuthService {
   AuthUser? get currentUser => signedIn ? _testUser : null;
 
   @override
+  Future<void> waitForInitialAuthState() async {
+    await authStateChanges.first;
+  }
+
+  @override
   Future<bool> get isAppleSignInAvailable async => false;
 
   @override

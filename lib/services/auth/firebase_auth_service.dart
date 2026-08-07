@@ -29,6 +29,20 @@ class FirebaseAuthService implements AuthService {
   AuthUser? get currentUser => _mapUser(_firebaseAuth.currentUser);
 
   @override
+  Future<void> waitForInitialAuthState() async {
+    try {
+      await _firebaseAuth.authStateChanges().first.timeout(
+        const Duration(seconds: 10),
+      );
+    } on TimeoutException {
+      debugPrint(
+        '[Auth] waitForInitialAuthState timed out; '
+        'continuing with currentUser=${_firebaseAuth.currentUser?.uid}',
+      );
+    }
+  }
+
+  @override
   Future<bool> get isAppleSignInAvailable async {
     if (!isAppleSignInEnabledForBuild) return false;
     if (!Platform.isIOS) return false;

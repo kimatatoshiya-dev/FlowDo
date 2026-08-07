@@ -10,6 +10,9 @@ abstract class AuthService {
 
   AuthUser? get currentUser;
 
+  /// コールドスタート時の Firebase Auth セッション復元が完了するまで待つ
+  Future<void> waitForInitialAuthState();
+
   Future<void> signInWithGoogle();
 
   Future<void> signInWithApple();

@@ -70,6 +70,11 @@ flutter_icons:
 # The following section is specific to Flutter packages.
 flutter:
 
+  # iOS 実機 debug で NOTIFY_DEBUGGER_ABOUT_RX_PAGES が LLDB 停止する問題を回避。
+  # Xcode の flutter_lldbinit（自動 continue）を使う。
+  config:
+    enable-lldb-debugging: false
+
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.

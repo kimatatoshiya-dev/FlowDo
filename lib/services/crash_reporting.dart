@@ -16,8 +16,25 @@ bool get isCrashReportingEnabled => kReleaseMode;
 /// @Deprecated 互換のため残す
 bool get isMonitoringEnabled => isCrashReportingEnabled;
 
+/// Debug / 起動時向け: デバッガを止めずログのみ記録する
+void installStartupErrorHandlers() {
+  FlutterError.onError = (details) {
+    debugPrint('FlutterError: ${details.exceptionAsString()}');
+    if (details.stack != null) {
+      debugPrint(details.stack.toString());
+    }
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('Uncaught async error: $error');
+    debugPrint(stack.toString());
+    return true;
+  };
+}
+
 /// Firebase 初期化・Crashlytics・Analytics をセットアップする
 Future<AnalyticsService> initializeAppMonitoring() async {
+  installStartupErrorHandlers();
   startupTrace('Firebase.initializeApp() starting');
   try {
     await Firebase.initializeApp(
@@ -196,19 +213,7 @@ Future<void> _sendFlutterErrorToCrashlytics(FlutterErrorDetails details) async {
 }
 
 void _installDebugErrorHandlers() {
-  FlutterError.onError = (details) {
-    FlutterError.presentError(details);
-    debugPrint('FlutterError: ${details.exceptionAsString()}');
-    if (details.stack != null) {
-      debugPrint(details.stack.toString());
-    }
-  };
-
-  PlatformDispatcher.instance.onError = (error, stack) {
-    debugPrint('Uncaught async error: $error');
-    debugPrint(stack.toString());
-    return true;
-  };
+  installStartupErrorHandlers();
 }
 
 void _installGracefulErrorWidget() {

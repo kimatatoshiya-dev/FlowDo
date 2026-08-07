@@ -28,5 +28,10 @@ void main() {
       await expectLater(signedInService.signInWithApple(), completes);
       await expectLater(signedInService.signOut(), completes);
     });
+
+    test('waitForInitialAuthState は即座に完了する', () async {
+      await expectLater(signedInService.waitForInitialAuthState(), completes);
+      await expectLater(signedOutService.waitForInitialAuthState(), completes);
+    });
   });
 }

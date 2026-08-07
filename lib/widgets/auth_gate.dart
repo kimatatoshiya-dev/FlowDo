@@ -19,25 +19,28 @@ class AuthGate extends StatelessWidget {
   Widget build(BuildContext context) {
     return StreamBuilder<AuthUser?>(
       stream: authService.authStateChanges,
-      initialData: authService.currentUser,
       builder: (context, snapshot) {
         startupTrace(
           'AuthGate.build',
           'connectionState=${snapshot.connectionState}, '
           'hasData=${snapshot.hasData}, '
+          'hasError=${snapshot.hasError}, '
           'data=${snapshot.data?.uid ?? 'null'}, '
           'currentUser=${authService.currentUser?.uid ?? 'null'}',
         );
-        if (snapshot.connectionState == ConnectionState.waiting &&
-            snapshot.data == null &&
-            authService.currentUser == null) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
           startupTrace('AuthGate -> waiting spinner');
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
 
-        final user = snapshot.data ?? authService.currentUser;
+        if (snapshot.hasError) {
+          startupTrace('AuthGate -> auth stream error', snapshot.error);
+          return LoginPage(authService: authService);
+        }
+
+        final user = snapshot.data;
         if (user != null) {
           startupTrace('AuthGate -> signedInBuilder', 'uid=${user.uid}');
           return signedInBuilder(context);
