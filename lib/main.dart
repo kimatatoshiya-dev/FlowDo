@@ -345,7 +345,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   bool _isLoading = true;
   bool _inputFocused = false;
   String _searchQuery = '';
-  String? _categoryFilterId;
+  final Set<String> _categoryFilterIds = {};
   TaskSortMode _sortMode = TaskSortMode.priority;
   Timer? _layoutChangeTimer;
   TaskSortMode? _pendingLayoutSortMode;
@@ -544,14 +544,15 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     _pendingLayoutSortMode = null;
 
     final tasksToAnimate = <int>{};
-    if (_categoryFilterId != null) {
-      for (final taskId in _deferredFilterTaskIds) {
-        final index = _tasks.indexWhere((t) => t.id == taskId);
-        if (index < 0) continue;
-        if (_tasks[index].categoryId != _categoryFilterId) {
-          tasksToAnimate.add(taskId);
-        }
-      }
+    if (_categoryFilterIds.isNotEmpty) {
+  for (final taskId in _deferredFilterTaskIds) {
+    final index = _tasks.indexWhere((t) => t.id == taskId);
+    if (index < 0) continue;
+
+    if (!_categoryFilterIds.contains(_tasks[index].categoryId)) {
+      tasksToAnimate.add(taskId);
+    }
+  }
     } else if (sortMode != null && sortMode != TaskSortMode.manual) {
       tasksToAnimate.addAll(_deferredFilterTaskIds);
     }
@@ -808,8 +809,9 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
           for (final item in _categories)
             if (item.id != category.id) item,
         ];
-        if (_categoryFilterId == category.id) {
-          _categoryFilterId = null;
+        if (_categoryFilterIds.contains(category.id)) {
+  _categoryFilterIds.remove(category.id);
+}
         }
       });
 
@@ -900,11 +902,11 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     final list = _tasks.where((task) {
       if (task.isInbox) return false;
       if (task.isCompleted != completed) return false;
-      if (_categoryFilterId != null &&
-          task.categoryId != _categoryFilterId &&
-          !_deferredFilterTaskIds.contains(task.id)) {
-        return false;
-      }
+      if (_categoryFilterIds.isNotEmpty &&
+    !_categoryFilterIds.contains(task.categoryId) &&
+    !_deferredFilterTaskIds.contains(task.id)) {
+  return false;
+}
       if (!task.matchesQuery(_searchQuery)) return false;
       return true;
     }).toList();
@@ -1251,7 +1253,8 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     final recentTasks = _recentlyAddedTasks();
     final pendingTasks = _filteredTasks(completed: false);
     final completedTasks = _filteredTasks(completed: true);
-    final hasFilter = _searchQuery.isNotEmpty || _categoryFilterId != null;
+    final hasFilter = _searchQuery.isNotEmpty ||
+    _categoryFilterIds.isNotEmpty;
     final hasVisibleTasks = recentTasks.isNotEmpty ||
         pendingTasks.isNotEmpty ||
         completedTasks.isNotEmpty;
@@ -1355,12 +1358,20 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                     child: CategoryBar(
                       categories: _categories,
                       selectedId:
-                          _categoryFilterId == CategoryItem.uncategorizedId
-                              ? null
-                              : _categoryFilterId,
+    _categoryFilterIds.isEmpty
+        ? null
+        : _categoryFilterIds.first,
                       onSelected: (id) {
-                        setState(() => _categoryFilterId = id);
-                      },
+  setState(() {
+    if (id == null) {
+      _categoryFilterIds.clear();
+    } else if (_categoryFilterIds.contains(id)) {
+      _categoryFilterIds.remove(id);
+    } else {
+      _categoryFilterIds.add(id);
+    }
+  });
+},
                       onAdd: _addCategory,
                       onRename: _renameCategory,
                       onDelete: _deleteCategory,
