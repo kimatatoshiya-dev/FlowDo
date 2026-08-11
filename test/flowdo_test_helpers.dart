@@ -7,6 +7,7 @@ import 'package:flowdo/main.dart';
 import 'package:flowdo/services/analytics/noop_analytics_service.dart';
 import 'package:flowdo/services/auth/noop_auth_service.dart';
 import 'package:flowdo/services/tasks/local_task_repository.dart';
+import 'package:flowdo/widgets/category_bar.dart';
 
 const flowDoTestAnalyticsService = NoOpAnalyticsService();
 const flowDoTestAuthService = NoOpAuthService();
@@ -48,6 +49,19 @@ Future<void> pumpFlowDoApp(
 /// 操作後に UI を落ち着かせる（pumpAndSettle はセッション計測タイマーで止まるため使わない）
 Future<void> settleFlowDoUi(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 300));
+}
+
+/// ダッシュボード拡張後も CategoryBar をビルド・表示させる
+Future<void> revealCategoryBar(WidgetTester tester) async {
+  final homeScroll = find.byType(CustomScrollView);
+  if (homeScroll.evaluate().isEmpty) return;
+
+  for (var i = 0; i < 6; i++) {
+    if (find.byType(CategoryBar).evaluate().isNotEmpty) break;
+    await tester.drag(homeScroll, const Offset(0, -200));
+    await tester.pump();
+  }
+  await settleFlowDoUi(tester);
 }
 
 /// ダイアログ閉鎖後の runAfterDialogClosed 完了まで待つ

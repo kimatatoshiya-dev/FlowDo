@@ -63,6 +63,14 @@ class Task {
     return _dateOnly(dueDate!) == _today;
   }
 
+  /// 今日から7日以内（今日を含む）に期限がある未完了タスク
+  bool get isDueWithin7Days {
+    if (dueDate == null || isCompleted) return false;
+    final due = _dateOnly(dueDate!);
+    final lastDay = _today.add(const Duration(days: 7));
+    return !due.isBefore(_today) && !due.isAfter(lastDay);
+  }
+
   static DateTime get _today {
     final now = DateTime.now();
     return DateTime(now.year, now.month, now.day);

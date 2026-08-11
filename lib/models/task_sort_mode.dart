@@ -32,6 +32,31 @@ int comparePinnedOrder(Task a, Task b) {
   }
   return a.id.compareTo(b.id);
 }
+
+/// 固定タスクとそれ以外に分割する（入力順を維持）
+(List<Task> pinned, List<Task> unpinned) splitPinnedTasks(List<Task> tasks) {
+  final pinned = <Task>[];
+  final unpinned = <Task>[];
+  for (final task in tasks) {
+    if (task.isFavorite) {
+      pinned.add(task);
+    } else {
+      unpinned.add(task);
+    }
+  }
+  return (pinned, unpinned);
+}
+
+/// ドラッグ並び替え後の固定順を pinnedAt に反映する
+void applyPinnedAtOrder(List<Task> reorderedPinned) {
+  if (reorderedPinned.isEmpty) return;
+
+  final base = DateTime.now();
+  for (var i = 0; i < reorderedPinned.length; i++) {
+    reorderedPinned[i].pinnedAt = base.add(Duration(microseconds: i));
+  }
+}
+
 int _lastPinnedIndexInGroup({
   required List<Task> tasks,
   required bool Function(Task task) inGroup,

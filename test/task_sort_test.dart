@@ -321,4 +321,29 @@ void main() {
       expect(index, 1);
     });
   });
+
+  group('splitPinnedTasks', () {
+    test('固定タスクを先頭グループとして分割する', () {
+      final a = Task(id: 1, title: 'a', isFavorite: true);
+      final b = Task(id: 2, title: 'b');
+      final c = Task(id: 3, title: 'c', isFavorite: true);
+
+      final (pinned, unpinned) = splitPinnedTasks([a, b, c]);
+
+      expect(pinned.map((t) => t.id), [1, 3]);
+      expect(unpinned.map((t) => t.id), [2]);
+    });
+  });
+
+  group('applyPinnedAtOrder', () {
+    test('並び順どおりに pinnedAt を更新する', () {
+      final a = Task(id: 1, title: 'a', isFavorite: true);
+      final b = Task(id: 2, title: 'b', isFavorite: true);
+      applyPinnedAtOrder([b, a]);
+
+      expect(b.pinnedAt, isNotNull);
+      expect(a.pinnedAt, isNotNull);
+      expect(b.pinnedAt!.isBefore(a.pinnedAt!), isTrue);
+    });
+  });
 }

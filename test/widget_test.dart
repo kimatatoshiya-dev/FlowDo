@@ -24,8 +24,10 @@ void main() {
     expect(find.text('改行ごとに1件のタスクになります。'), findsOneWidget);
     expect(find.text('まず全部書き出そう。整理はあとから。'), findsOneWidget);
     expect(find.text('登録'), findsOneWidget);
-    expect(find.text('未完了'), findsOneWidget);
-    expect(find.text('今日の期限'), findsOneWidget);
+    expect(find.text('今日やること'), findsOneWidget);
+    expect(find.text('固定'), findsOneWidget);
+    expect(find.text('今日期限'), findsOneWidget);
+    expect(find.text('7日以内'), findsOneWidget);
     expect(find.textContaining('ジムへ19時に行く'), findsOneWidget);
 
     await drainFlowDoTimers(tester);
@@ -175,6 +177,7 @@ void main() {
 
   testWidgets('カテゴリー追加後も Red Screen にならない', (WidgetTester tester) async {
     await pumpFlowDoApp(tester);
+    await revealCategoryBar(tester);
 
     final addChip = find.byKey(const ValueKey('category_add_chip'));
     await tester.ensureVisible(addChip);
@@ -213,6 +216,7 @@ void main() {
 
   testWidgets('カテゴリーフィルターに未分類は表示しない', (WidgetTester tester) async {
     await pumpFlowDoApp(tester);
+    await revealCategoryBar(tester);
 
     expect(
       find.descendant(
