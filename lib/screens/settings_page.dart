@@ -229,9 +229,7 @@ class _SettingsPageState extends State<SettingsPage> {
         SettingsLinkTile(
           icon: Icons.info_outline,
           title: 'アプリについて',
-          subtitle: kGuestModeEnabled
-              ? '考えずに入力。行動に集中。'
-              : '考えずに入力。整理はAI。行動に集中。',
+          subtitle: kAppTagline,
           onTap: _openAboutPage,
         ),
         SettingsLinkTile(
@@ -368,20 +366,24 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
           ),
-          const SettingsSectionHeader(title: 'アカウント'),
-          StreamBuilder<AuthUser?>(
-            stream: widget.authService.authStateChanges,
-            initialData: widget.authService.currentUser,
-            builder: (context, snapshot) {
-              return _accountSection(snapshot.data);
-            },
-          ),
+          if (kCloudAuthEnabled) ...[
+            const SettingsSectionHeader(title: 'アカウント'),
+            StreamBuilder<AuthUser?>(
+              stream: widget.authService.authStateChanges,
+              initialData: widget.authService.currentUser,
+              builder: (context, snapshot) {
+                return _accountSection(snapshot.data);
+              },
+            ),
+          ],
           const SettingsSectionHeader(title: 'アプリについて'),
           _aboutSection(),
           const SettingsSectionHeader(title: 'サポート'),
           _supportSection(),
-          const SizedBox(height: 16),
-          const DebugCrashlyticsPanel(),
+          if (kFirebaseEnabled) ...[
+            const SizedBox(height: 16),
+            const DebugCrashlyticsPanel(),
+          ],
         ],
       ),
     );

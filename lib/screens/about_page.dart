@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../config/app_features.dart';
+import '../config/app_features.dart' show kAppTagline;
 import '../services/app_version_info.dart';
 import '../theme/app_theme.dart';
 import '../widgets/flowdo_mark.dart';
@@ -38,10 +38,6 @@ class _AboutPageState extends State<AboutPage> {
     setState(() => _versionInfo = info);
   }
 
-  String get _tagline => kGuestModeEnabled
-      ? '考えずに入力。行動に集中。'
-      : '考えずに入力。整理はAI。行動に集中。';
-
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<FlowDoColors>()!;
@@ -65,7 +61,7 @@ class _AboutPageState extends State<AboutPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _tagline,
+                  kAppTagline,
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: colors.secondaryLabel,

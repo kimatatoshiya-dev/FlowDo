@@ -6,12 +6,14 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../config/app_features.dart';
 import '../firebase_options.dart';
 import '../debug/startup_trace.dart';
 import 'analytics/analytics_service.dart';
+import 'analytics/noop_analytics_service.dart';
 
-/// Crashlytics は Release ビルドのみ Firebase へ送信する
-bool get isCrashReportingEnabled => kReleaseMode;
+/// Crashlytics は Firebase 有効かつ Release ビルドのみ送信する
+bool get isCrashReportingEnabled => kFirebaseEnabled && kReleaseMode;
 
 /// @Deprecated 互換のため残す
 bool get isMonitoringEnabled => isCrashReportingEnabled;
@@ -35,6 +37,11 @@ void installStartupErrorHandlers() {
 /// Firebase 初期化・Crashlytics・Analytics をセットアップする
 Future<AnalyticsService> initializeAppMonitoring() async {
   installStartupErrorHandlers();
+  if (!kFirebaseEnabled) {
+    startupTrace('initializeAppMonitoring() skipped', 'kFirebaseEnabled=false');
+    return const NoOpAnalyticsService();
+  }
+
   startupTrace('Firebase.initializeApp() starting');
   try {
     await Firebase.initializeApp(

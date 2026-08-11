@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flowdo/config/app_links.dart';
+import 'package:flowdo/config/app_features.dart';
 import 'package:flowdo/models/completed_task_retention.dart';
 import 'package:flowdo/models/feedback_preferences.dart';
 import 'package:flowdo/services/app_version_info.dart';
@@ -47,6 +48,12 @@ void main() {
     await pumpSettings(tester);
 
     expect(find.text('設定'), findsOneWidget);
+    if (kCloudAuthEnabled) {
+      expect(find.text('アカウント', skipOffstage: false), findsOneWidget);
+    } else {
+      expect(find.text('アカウント', skipOffstage: false), findsNothing);
+      expect(find.text('Google でログイン', skipOffstage: false), findsNothing);
+    }
     expect(find.text('アプリについて', skipOffstage: false), findsNWidgets(2));
     expect(find.text('バージョン', skipOffstage: false), findsOneWidget);
     expect(find.text('v1.0.0 (1)', skipOffstage: false), findsOneWidget);

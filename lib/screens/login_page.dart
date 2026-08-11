@@ -6,6 +6,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../services/auth/auth_service.dart';
 import '../services/auth/auth_sign_in_debug.dart';
+import '../config/app_features.dart';
 import '../debug/startup_trace.dart';
 import '../theme/app_theme.dart';
 import '../widgets/flowdo_mark.dart';
@@ -101,7 +102,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '考えずに入力。整理はAI。行動に集中。',
+                    kAppTagline,
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: colors.secondaryLabel,

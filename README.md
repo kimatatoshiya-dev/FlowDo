@@ -1,17 +1,13 @@
-# flowdo
+# FlowDo
 
-A new Flutter project.
+考えずに入力。行動に集中。 — iOS 向けタスク管理アプリ（Flutter）
 
-## Getting Started
+## 開発
 
-This project is a starting point for a Flutter application.
+```bash
+flutter pub get
+flutter test
+flutter run
+```
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+公式サイトの静的ファイルは `website/` にあります（GitHub Pages 公開前）。

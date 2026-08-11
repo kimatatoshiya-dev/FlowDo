@@ -1,10 +1,7 @@
 import 'package:flutter/foundation.dart';
 
-/// Temporary startup instrumentation. Remove after white-screen investigation.
+/// Debug ビルドのみの起動トレース。
 void startupTrace(String step, [Object? detail]) {
-  final message = '[FlowDoStartup] $step${detail == null ? '' : ': $detail'}';
-  debugPrint(message);
-  // Visible in Xcode device console even when flutter run cannot attach.
-  // ignore: avoid_print
-  print(message);
+  if (!kDebugMode) return;
+  debugPrint('[FlowDoStartup] $step${detail == null ? '' : ': $detail'}');
 }

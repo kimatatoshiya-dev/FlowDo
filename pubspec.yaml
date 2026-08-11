@@ -1,5 +1,5 @@
 name: flowdo
-description: "A new Flutter project."
+description: "FlowDo — 考えずに入力。行動に集中。タスク管理アプリ。"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -86,7 +86,6 @@ flutter:
 
   assets:
     - assets/sounds/
-    - .env
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

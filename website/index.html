@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="FlowDo は、頭に浮かんだことをそのまま書き出し、あとからカテゴリーへ整理する iOS 向けタスクアプリです。"
+    />
+    <meta name="theme-color" content="#007aff" />
+    <meta property="og:site_name" content="FlowDo" />
+    <meta property="og:locale" content="ja_JP" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="FlowDo — 考えずに入力。行動に集中。" />
+    <meta
+      property="og:description"
+      content="FlowDo は、頭に浮かんだことをそのまま書き出し、あとからカテゴリーへ整理する iOS 向けタスクアプリです。"
+    />
+    <title>FlowDo — 考えずに入力。行動に集中。</title>
+    <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">本文へスキップ</a>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <a class="brand" href="index.html">
+          <img class="brand__mark" src="assets/logo.svg" alt="" width="28" height="28" />
+          FlowDo
+        </a>
+        <button
+          class="nav-toggle"
+          type="button"
+          data-nav-toggle
+          aria-expanded="false"
+          aria-controls="site-nav"
+          aria-label="メニューを開く"
+        >
+          メニュー
+        </button>
+        <nav id="site-nav" class="site-nav" data-site-nav aria-label="メイン">
+          <a href="index.html" aria-current="page">Home</a>
+          <a href="privacy/">Privacy</a>
+          <a href="terms/">Terms</a>
+          <a href="contact.html">Contact</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main-content" class="page-main">
+      <section class="hero">
+        <img
+          class="hero__logo"
+          src="assets/logo.svg"
+          alt=""
+          aria-hidden="true"
+          width="72"
+          height="72"
+        />
+        <h1>FlowDo</h1>
+        <p class="hero__tagline">考えずに入力。行動に集中。</p>
+      </section>
+
+      <section class="card-grid" aria-label="アプリの特徴">
+        <article class="card">
+          <h2>まず全部書き出す</h2>
+          <p>
+            頭に浮かんだことを、そのまま入力。改行ごとにタスクになるので、考えながら止まらず書けます。
+          </p>
+        </article>
+        <article class="card">
+          <h2>あとから整理する</h2>
+          <p>
+            追加したタスクは「追加したタスク」エリアに溜まります。カテゴリーを選ぶだけで、メインリストへ移動できます。
+          </p>
+        </article>
+        <article class="card">
+          <h2>端末内に保存</h2>
+          <p>
+            無料版 v1 はログイン不要。データは端末内に保存され、シンプルに使い始められます。
+          </p>
+        </article>
+      </section>
+
+      <section class="cta" aria-label="ダウンロード">
+        <button type="button" class="store-button" disabled>
+          App Store で近日公開
+        </button>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <p>© 2026 FlowDo</p>
+        <nav aria-label="フッター">
+          <a href="privacy/">Privacy Policy</a>
+          <a href="terms/">Terms of Service</a>
+          <a href="contact.html">Contact</a>
+        </nav>
+      </div>
+    </footer>
+
+    <script src="js/nav.js"></script>
+  </body>
+</html>
