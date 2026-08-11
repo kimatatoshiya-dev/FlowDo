@@ -1,13 +1,22 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../config/app_features.dart';
+import '../config/app_links.dart';
 import '../models/completed_task_retention.dart';
 import '../models/feedback_preferences.dart';
+import '../services/app_version_info.dart';
+import '../services/auth/auth_service.dart';
 import '../services/auth/auth_user.dart';
 import '../theme/app_theme.dart';
+import '../utils/external_link_launcher.dart';
 import '../widgets/debug_crashlytics_panel.dart';
+import '../widgets/settings_group.dart';
+import 'about_page.dart';
 
 /// 設定画面
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   const SettingsPage({
     super.key,
     required this.themeMode,
@@ -17,8 +26,11 @@ class SettingsPage extends StatelessWidget {
     required this.completedTaskRetention,
     required this.onCompletedTaskRetentionChanged,
     required this.onDeleteAllCompletedTasks,
-    required this.authUser,
+    required this.authService,
+    required this.onSignInWithGoogle,
+    required this.onSignInWithApple,
     required this.onSignOut,
+    this.versionInfo,
   });
 
   final ThemeMode themeMode;
@@ -28,10 +40,54 @@ class SettingsPage extends StatelessWidget {
   final CompletedTaskRetention completedTaskRetention;
   final ValueChanged<CompletedTaskRetention> onCompletedTaskRetentionChanged;
   final Future<void> Function() onDeleteAllCompletedTasks;
-  final AuthUser? authUser;
+  final AuthService authService;
+  final Future<void> Function() onSignInWithGoogle;
+  final Future<void> Function() onSignInWithApple;
   final Future<void> Function() onSignOut;
+  final AppVersionInfo? versionInfo;
 
-  Future<void> _confirmDeleteAllCompletedTasks(BuildContext context) async {
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  bool _appleSignInAvailable = false;
+  bool _isSigningIn = false;
+  AppVersionInfo? _versionInfo;
+
+  @override
+  void initState() {
+    super.initState();
+    _versionInfo = widget.versionInfo;
+    unawaited(_loadAppleAvailability());
+    if (_versionInfo == null) {
+      unawaited(_loadVersionInfo());
+    }
+  }
+
+  Future<void> _loadAppleAvailability() async {
+    final available = await widget.authService.isAppleSignInAvailable;
+    if (!mounted) return;
+    setState(() => _appleSignInAvailable = available);
+  }
+
+  Future<void> _loadVersionInfo() async {
+    final info = await AppVersionInfo.load();
+    if (!mounted) return;
+    setState(() => _versionInfo = info);
+  }
+
+  Future<void> _runSignIn(Future<void> Function() action) async {
+    if (_isSigningIn) return;
+    setState(() => _isSigningIn = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) setState(() => _isSigningIn = false);
+    }
+  }
+
+  Future<void> _confirmDeleteAllCompletedTasks() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -54,16 +110,16 @@ class SettingsPage extends StatelessWidget {
     );
 
     if (confirmed == true) {
-      await onDeleteAllCompletedTasks();
+      await widget.onDeleteAllCompletedTasks();
     }
   }
 
-  Future<void> _confirmSignOut(BuildContext context) async {
+  Future<void> _confirmSignOut() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('ログアウト'),
-        content: const Text('ログアウトしますか？'),
+        content: const Text('ログアウトしますか？\n端末内のタスクはそのまま使えます。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -78,11 +134,144 @@ class SettingsPage extends StatelessWidget {
     );
 
     if (confirmed == true) {
-      await onSignOut();
-      if (context.mounted) {
+      await widget.onSignOut();
+      if (mounted) {
         Navigator.of(context).popUntil((route) => route.isFirst);
       }
     }
+  }
+
+  void _openAboutPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => AboutPage(versionInfo: _versionInfo),
+      ),
+    );
+  }
+
+  Future<void> _openExternalLink(Uri uri) {
+    return ExternalLinkLauncher.launch(context, uri);
+  }
+
+  Widget _accountSection(AuthUser? authUser) {
+    final colors = Theme.of(context).extension<FlowDoColors>()!;
+
+    if (authUser == null) {
+      return SettingsGroup(
+        children: [
+          const ListTile(
+            leading: Icon(Icons.person_outline),
+            title: Text('ゲスト利用中'),
+            subtitle: Text('タスクはこの端末に保存されています'),
+          ),
+          if (_isSigningIn)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else ...[
+            Divider(height: 1, indent: 56, color: colors.separator),
+            ListTile(
+              leading: const Icon(Icons.g_mobiledata_rounded),
+              title: const Text('Google でログイン'),
+              subtitle: const Text('クラウド同期とデータ移行'),
+              onTap: () => _runSignIn(widget.onSignInWithGoogle),
+            ),
+            if (_appleSignInAvailable) ...[
+              Divider(height: 1, indent: 56, color: colors.separator),
+              ListTile(
+                leading: const Icon(Icons.apple),
+                title: const Text('Apple でログイン'),
+                subtitle: const Text('クラウド同期とデータ移行'),
+                onTap: () => _runSignIn(widget.onSignInWithApple),
+              ),
+            ],
+          ],
+        ],
+      );
+    }
+
+    return SettingsGroup(
+      children: [
+        ListTile(
+          leading: const Icon(Icons.person_outline),
+          title: Text(authUser.label),
+          subtitle: Text(
+            authUser.email ?? 'クラウド同期中',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        Divider(height: 1, indent: 56, color: colors.separator),
+        ListTile(
+          leading: Icon(
+            Icons.logout,
+            color: Theme.of(context).colorScheme.error,
+          ),
+          title: Text(
+            'ログアウト',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.error,
+            ),
+          ),
+          onTap: _confirmSignOut,
+        ),
+      ],
+    );
+  }
+
+  Widget _aboutSection() {
+    final colors = Theme.of(context).extension<FlowDoColors>()!;
+    final versionLabel = _versionInfo?.displayLabel ?? '読み込み中…';
+
+    return SettingsGroup(
+      children: [
+        SettingsLinkTile(
+          icon: Icons.info_outline,
+          title: 'アプリについて',
+          subtitle: kGuestModeEnabled
+              ? '考えずに入力。行動に集中。'
+              : '考えずに入力。整理はAI。行動に集中。',
+          onTap: _openAboutPage,
+        ),
+        SettingsLinkTile(
+          icon: Icons.tag_outlined,
+          title: 'バージョン',
+          showDivider: false,
+          trailing: Text(
+            versionLabel,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: colors.secondaryLabel,
+                ),
+          ),
+          onTap: null,
+        ),
+      ],
+    );
+  }
+
+  Widget _supportSection() {
+    return SettingsGroup(
+      children: [
+        SettingsLinkTile(
+          icon: Icons.description_outlined,
+          title: '利用規約',
+          onTap: () => _openExternalLink(AppLinks.termsOfServiceUri),
+        ),
+        SettingsLinkTile(
+          icon: Icons.privacy_tip_outlined,
+          title: 'プライバシーポリシー',
+          onTap: () => _openExternalLink(AppLinks.privacyPolicyUri),
+        ),
+        SettingsLinkTile(
+          icon: Icons.mail_outline,
+          title: 'お問い合わせ',
+          subtitle: AppLinks.contactEmail,
+          showDivider: false,
+          onTap: () => _openExternalLink(AppLinks.contactUri),
+        ),
+      ],
+    );
   }
 
   @override
@@ -93,225 +282,105 @@ class SettingsPage extends StatelessWidget {
       appBar: AppBar(title: const Text('設定')),
       body: ListView(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-            child: Text(
-              '外観',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: colors.secondaryLabel,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
-                  ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Material(
-              color: colors.groupedSurface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+          const SettingsSectionHeader(title: '外観'),
+          SettingsGroup(
+            children: [
+              _ThemeTile(
+                label: 'ライトモード',
+                icon: Icons.light_mode_outlined,
+                selected: widget.themeMode == ThemeMode.light,
+                onTap: () => widget.onThemeModeChanged(ThemeMode.light),
+                showDivider: true,
               ),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: [
-                  _ThemeTile(
-                    label: 'ライトモード',
-                    icon: Icons.light_mode_outlined,
-                    selected: themeMode == ThemeMode.light,
-                    onTap: () => onThemeModeChanged(ThemeMode.light),
-                    showDivider: true,
-                  ),
-                  _ThemeTile(
-                    label: 'ダークモード',
-                    icon: Icons.dark_mode_outlined,
-                    selected: themeMode == ThemeMode.dark,
-                    onTap: () => onThemeModeChanged(ThemeMode.dark),
-                    showDivider: true,
-                  ),
-                  _ThemeTile(
-                    label: 'システム設定に従う',
-                    icon: Icons.brightness_auto_outlined,
-                    selected: themeMode == ThemeMode.system,
-                    onTap: () => onThemeModeChanged(ThemeMode.system),
-                    showDivider: false,
-                  ),
-                ],
+              _ThemeTile(
+                label: 'ダークモード',
+                icon: Icons.dark_mode_outlined,
+                selected: widget.themeMode == ThemeMode.dark,
+                onTap: () => widget.onThemeModeChanged(ThemeMode.dark),
+                showDivider: true,
               ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-            child: Text(
-              '完了タスク',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: colors.secondaryLabel,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
-                  ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Material(
-              color: colors.groupedSurface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+              _ThemeTile(
+                label: 'システム設定に従う',
+                icon: Icons.brightness_auto_outlined,
+                selected: widget.themeMode == ThemeMode.system,
+                onTap: () => widget.onThemeModeChanged(ThemeMode.system),
+                showDivider: false,
               ),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: [
-                  for (final (index, retention)
-                      in CompletedTaskRetention.values.indexed)
-                    _RetentionTile(
-                      label: retention.label,
-                      selected: completedTaskRetention == retention,
-                      showDivider:
-                          index < CompletedTaskRetention.values.length - 1,
-                      onTap: () =>
-                          onCompletedTaskRetentionChanged(retention),
-                    ),
-                  Divider(height: 1, color: colors.separator),
-                  ListTile(
-                    title: Text(
-                      '完了タスクを一括削除',
-                      style: TextStyle(color: Theme.of(context).colorScheme.error),
-                    ),
-                    trailing: Icon(
-                      Icons.delete_outline,
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                    onTap: () => _confirmDeleteAllCompletedTasks(context),
-                  ),
-                ],
-              ),
-            ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-            child: Text(
-              'サウンドと触覚',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: colors.secondaryLabel,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
-                  ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Material(
-              color: colors.groupedSurface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: [
-                  SwitchListTile(
-                    secondary: const Icon(Icons.volume_up_outlined),
-                    title: const Text('効果音'),
-                    subtitle: const Text('登録・完了・整理時の音'),
-                    value: feedbackPreferences.soundEnabled,
-                    onChanged: (enabled) {
-                      onFeedbackPreferencesChanged(
-                        feedbackPreferences.copyWith(soundEnabled: enabled),
-                      );
-                    },
-                  ),
-                  Divider(height: 1, indent: 56, color: colors.separator),
-                  SwitchListTile(
-                    secondary: const Icon(Icons.vibration_outlined),
-                    title: const Text('ハプティック'),
-                    subtitle: const Text('登録・完了・整理時の振動'),
-                    value: feedbackPreferences.hapticEnabled,
-                    onChanged: (enabled) {
-                      onFeedbackPreferencesChanged(
-                        feedbackPreferences.copyWith(hapticEnabled: enabled),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-            child: Text(
-              'アカウント',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: colors.secondaryLabel,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
-                  ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Material(
-              color: colors.groupedSurface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.person_outline),
-                    title: Text(authUser?.label ?? 'ログイン中'),
-                    subtitle: Text(
-                      authUser?.email ?? 'アカウント情報',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Divider(height: 1, indent: 56, color: colors.separator),
-                  ListTile(
-                    leading: Icon(
-                      Icons.logout,
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                    title: Text(
-                      'ログアウト',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
-                    onTap: () => _confirmSignOut(context),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-            child: Text(
-              'アプリ情報',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: colors.secondaryLabel,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
-                  ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Material(
-              color: colors.groupedSurface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ListTile(
-                title: const Text('FlowDo'),
-                subtitle: const Text('考えずに入力。整理はAI。行動に集中。'),
-                trailing: Text(
-                  'v1.0.0',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: colors.secondaryLabel,
-                      ),
+          const SettingsSectionHeader(title: '完了タスク'),
+          SettingsGroup(
+            children: [
+              for (final (index, retention)
+                  in CompletedTaskRetention.values.indexed)
+                _RetentionTile(
+                  label: retention.label,
+                  selected: widget.completedTaskRetention == retention,
+                  showDivider:
+                      index < CompletedTaskRetention.values.length - 1,
+                  onTap: () =>
+                      widget.onCompletedTaskRetentionChanged(retention),
                 ),
+              Divider(height: 1, color: colors.separator),
+              ListTile(
+                title: Text(
+                  '完了タスクを一括削除',
+                  style:
+                      TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+                trailing: Icon(
+                  Icons.delete_outline,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                onTap: _confirmDeleteAllCompletedTasks,
               ),
-            ),
+            ],
           ),
+          const SettingsSectionHeader(title: 'サウンドと触覚'),
+          SettingsGroup(
+            children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.volume_up_outlined),
+                title: const Text('効果音'),
+                subtitle: const Text('登録・完了・整理時の音'),
+                value: widget.feedbackPreferences.soundEnabled,
+                onChanged: (enabled) {
+                  widget.onFeedbackPreferencesChanged(
+                    widget.feedbackPreferences.copyWith(
+                      soundEnabled: enabled,
+                    ),
+                  );
+                },
+              ),
+              Divider(height: 1, indent: 56, color: colors.separator),
+              SwitchListTile(
+                secondary: const Icon(Icons.vibration_outlined),
+                title: const Text('ハプティック'),
+                subtitle: const Text('登録・完了・整理時の振動'),
+                value: widget.feedbackPreferences.hapticEnabled,
+                onChanged: (enabled) {
+                  widget.onFeedbackPreferencesChanged(
+                    widget.feedbackPreferences.copyWith(
+                      hapticEnabled: enabled,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+          const SettingsSectionHeader(title: 'アカウント'),
+          StreamBuilder<AuthUser?>(
+            stream: widget.authService.authStateChanges,
+            initialData: widget.authService.currentUser,
+            builder: (context, snapshot) {
+              return _accountSection(snapshot.data);
+            },
+          ),
+          const SettingsSectionHeader(title: 'アプリについて'),
+          _aboutSection(),
+          const SettingsSectionHeader(title: 'サポート'),
+          _supportSection(),
+          const SizedBox(height: 16),
           const DebugCrashlyticsPanel(),
         ],
       ),

@@ -14,6 +14,7 @@ void main() {
       isSystem: true,
     ),
     CategoryItem(id: 'work', name: '仕事', colorValue: 0xFF007AFF),
+    CategoryItem(id: 'personal', name: 'プライベート', colorValue: 0xFF34C759),
   ];
 
   group('LocalTaskOrganizerService', () {
@@ -50,6 +51,27 @@ void main() {
 
       expect(plans.first.categoryId, 'work');
     });
+
+    test('未分類タスクは1回のバッチ分類で処理する', () async {
+      var batchCallCount = 0;
+      final organizer = LocalTaskOrganizerService(
+        categorizer: _BatchCategorizer(onBatch: () => batchCallCount++),
+      );
+      final tasks = [
+        Task(id: 0, title: '資料作成', isInbox: true),
+        Task(id: 1, title: '買い物', isInbox: true),
+      ];
+
+      final plans = await organizer.planOrganization(
+        inboxTasks: tasks,
+        categories: categories,
+      );
+
+      expect(batchCallCount, 1);
+      expect(plans, hasLength(2));
+      expect(plans[0].categoryId, 'work');
+      expect(plans[1].categoryId, 'personal');
+    });
   });
 }
 
@@ -64,6 +86,52 @@ class _FixedCategorizer implements AiCategorizerService {
     required List<CategoryItem> categories,
   }) async =>
       categoryId;
+
+  @override
+  Future<List<TaskCategorizationResult>> categorizeBatch({
+    required List<String> titles,
+    required List<CategoryItem> categories,
+  }) async {
+    return [
+      for (final title in titles)
+        TaskCategorizationResult(title: title, categoryId: categoryId),
+    ];
+  }
+
+  @override
+  Future<List<CategorySuggestion>> suggestCategories({
+    required String title,
+    required List<CategoryItem> categories,
+  }) async =>
+      [];
+}
+
+class _BatchCategorizer implements AiCategorizerService {
+  _BatchCategorizer({required this.onBatch});
+
+  final void Function() onBatch;
+
+  @override
+  Future<List<TaskCategorizationResult>> categorizeBatch({
+    required List<String> titles,
+    required List<CategoryItem> categories,
+  }) async {
+    onBatch();
+    return [
+      for (final title in titles)
+        TaskCategorizationResult(
+          title: title,
+          categoryId: title == '資料作成' ? 'work' : 'personal',
+        ),
+    ];
+  }
+
+  @override
+  Future<String> categorize({
+    required String title,
+    required List<CategoryItem> categories,
+  }) async =>
+      '';
 
   @override
   Future<List<CategorySuggestion>> suggestCategories({

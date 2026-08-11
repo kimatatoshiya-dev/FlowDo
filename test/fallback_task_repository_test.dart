@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flowdo/models/task.dart';
 import 'package:flowdo/services/app_storage.dart';
+import 'package:flowdo/services/auth/auth_user.dart';
 import 'package:flowdo/services/tasks/fallback_task_repository.dart';
 import 'package:flowdo/services/tasks/local_task_repository.dart';
 import 'package:flowdo/services/tasks/task_repository.dart';
@@ -52,15 +55,48 @@ void main() {
   });
 
   test('AuthAwareTaskRepository uses local when user is signed out', () async {
+    final authController = StreamController<AuthUser?>();
+    addTearDown(authController.close);
+
     final repository = AuthAwareTaskRepository(
       firestoreFactory: (_) => _FailingTaskRepository(),
       local: LocalTaskRepository(),
-      currentUserId: () => null,
+      authStateChanges: authController.stream,
+      initialUserId: null,
     );
 
     final task = Task.create(title: 'Signed out', categoryId: 'work');
     await repository.createTask(task);
 
     expect((await repository.loadTasks()).single.title, 'Signed out');
+  });
+
+  test('AuthAwareTaskRepository migrates guest data after explicit sign in',
+      () async {
+    final authController = StreamController<AuthUser?>();
+    addTearDown(authController.close);
+
+    final local = LocalTaskRepository();
+    final remote = LocalTaskRepository();
+    final repository = AuthAwareTaskRepository(
+      firestoreFactory: (_) => remote,
+      local: local,
+      authStateChanges: authController.stream,
+      initialUserId: null,
+    );
+
+    await repository.createTask(
+      Task.create(title: 'Guest task', categoryId: 'work'),
+    );
+    repository.prepareGuestDataMigration();
+
+    authController.add(
+      const AuthUser(uid: 'user-1', email: 'guest@flowdo.local'),
+    );
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    expect((await remote.loadTasks()).single.title, 'Guest task');
+    expect((await local.loadTasks()).single.title, 'Guest task');
   });
 }

@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'app_bootstrap.dart';
+import 'config/app_features.dart';
 import 'debug/startup_trace.dart';
 import 'models/category_item.dart';
 import 'models/task.dart';
@@ -17,8 +19,10 @@ import 'services/app_storage.dart';
 import 'services/auth/auth_service.dart';
 import 'services/completed_task_cleanup.dart';
 import 'services/analytics/analytics_service.dart';
-import 'services/crash_reporting.dart' show installStartupErrorHandlers, reportZonedError;
+import 'services/crash_reporting.dart'
+    show installStartupErrorHandlers, reportZonedError;
 import 'services/feedback_service.dart';
+import 'services/ai_categorizer_service.dart';
 import 'services/task_organizer_service.dart';
 import 'services/tasks/task_repository.dart';
 import 'theme/app_theme.dart';
@@ -26,44 +30,48 @@ import 'widgets/auth_gate.dart';
 import 'widgets/category_bar.dart';
 import 'widgets/category_name_dialog.dart';
 import 'widgets/home_dashboard.dart';
+import 'widgets/inbox_category_picker_sheet.dart';
 import 'widgets/task_add_sheet.dart';
 import 'widgets/task_input_bar.dart';
 import 'widgets/task_tile.dart';
 
 Future<void> main() async {
   startupTrace('main() entered');
-  runZonedGuarded(
-    () async {
-      WidgetsFlutterBinding.ensureInitialized();
-      installStartupErrorHandlers();
-      startupTrace('WidgetsFlutterBinding.ensureInitialized done');
-      try {
-        startupTrace('bootstrapApp() starting');
-        final bootstrap = await bootstrapApp().timeout(
-          const Duration(seconds: 30),
-          onTimeout: () => throw TimeoutException(
-            'App bootstrap timed out after 30 seconds',
-          ),
-        );
-        startupTrace('bootstrapApp() completed (auth restored, storage warmed)');
-        runApp(
-          FlowDoApp(
-            analyticsService: bootstrap.analyticsService,
-            authService: bootstrap.authService,
-            taskRepository: bootstrap.taskRepository,
-          ),
-        );
-        startupTrace('runApp(FlowDoApp) called');
-      } catch (error, stackTrace) {
-        startupTrace('bootstrapApp() FAILED', error);
-        debugPrint('App bootstrap failed: $error');
-        debugPrint(stackTrace.toString());
-        runApp(BootstrapErrorApp(error: error));
-        startupTrace('runApp(BootstrapErrorApp) called');
-      }
-    },
-    reportZonedError,
-  );
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    installStartupErrorHandlers();
+    startupTrace('WidgetsFlutterBinding.ensureInitialized done');
+    try {
+      await dotenv.load(fileName: '.env', isOptional: true);
+      startupTrace('dotenv.load done');
+    } catch (error, stackTrace) {
+      debugPrint('.env load failed (OPENAI_API_KEY unavailable): $error');
+      debugPrint(stackTrace.toString());
+    }
+    try {
+      startupTrace('bootstrapApp() starting');
+      final bootstrap = await bootstrapApp().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () =>
+            throw TimeoutException('App bootstrap timed out after 30 seconds'),
+      );
+      startupTrace('bootstrapApp() completed (auth restored, storage warmed)');
+      runApp(
+        FlowDoApp(
+          analyticsService: bootstrap.analyticsService,
+          authService: bootstrap.authService,
+          taskRepository: bootstrap.taskRepository,
+        ),
+      );
+      startupTrace('runApp(FlowDoApp) called');
+    } catch (error, stackTrace) {
+      startupTrace('bootstrapApp() FAILED', error);
+      debugPrint('App bootstrap failed: $error');
+      debugPrint(stackTrace.toString());
+      runApp(BootstrapErrorApp(error: error));
+      startupTrace('runApp(BootstrapErrorApp) called');
+    }
+  }, reportZonedError);
 }
 
 /// Firebase 初期化失敗時に白画面にならないようエラーを表示する
@@ -365,7 +373,9 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   final Set<int> _removingTaskIds = {};
   final Set<int> _organizingTaskIds = {};
   final Map<int, Timer> _completionTimers = {};
-  final TaskOrganizerService _organizer = const LocalTaskOrganizerService();
+  final TaskOrganizerService _organizer = LocalTaskOrganizerService(
+    categorizer: createAiCategorizerService(),
+  );
   bool _isOrganizing = false;
   Timer? _keyboardScrollTimer;
   bool _isScrollingToInput = false;
@@ -545,14 +555,14 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
 
     final tasksToAnimate = <int>{};
     if (_categoryFilterIds.isNotEmpty) {
-  for (final taskId in _deferredFilterTaskIds) {
-    final index = _tasks.indexWhere((t) => t.id == taskId);
-    if (index < 0) continue;
+      for (final taskId in _deferredFilterTaskIds) {
+        final index = _tasks.indexWhere((t) => t.id == taskId);
+        if (index < 0) continue;
 
-    if (!_categoryFilterIds.contains(_tasks[index].categoryId)) {
-      tasksToAnimate.add(taskId);
-    }
-  }
+        if (!_categoryFilterIds.contains(_tasks[index].categoryId)) {
+          tasksToAnimate.add(taskId);
+        }
+      }
     } else if (sortMode != null && sortMode != TaskSortMode.manual) {
       tasksToAnimate.addAll(_deferredFilterTaskIds);
     }
@@ -732,7 +742,8 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     if (!mounted) return;
 
     final colorIndex =
-        _categories.where((c) => !c.isSystem).length % categoryColorPalette.length;
+        _categories.where((c) => !c.isSystem).length %
+        categoryColorPalette.length;
     final newCategory = CategoryItem.create(
       name: name,
       colorValue: categoryColorPalette[colorIndex],
@@ -810,8 +821,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
             if (item.id != category.id) item,
         ];
         if (_categoryFilterIds.contains(category.id)) {
-  _categoryFilterIds.remove(category.id);
-}
+          _categoryFilterIds.remove(category.id);
         }
       });
 
@@ -903,10 +913,10 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       if (task.isInbox) return false;
       if (task.isCompleted != completed) return false;
       if (_categoryFilterIds.isNotEmpty &&
-    !_categoryFilterIds.contains(task.categoryId) &&
-    !_deferredFilterTaskIds.contains(task.id)) {
-  return false;
-}
+          !_categoryFilterIds.contains(task.categoryId) &&
+          !_deferredFilterTaskIds.contains(task.id)) {
+        return false;
+      }
       if (!task.matchesQuery(_searchQuery)) return false;
       return true;
     }).toList();
@@ -923,18 +933,15 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   /// 2.5秒待機中のタスクは現在位置を維持し、それ以外だけ並び替える
   List<Task> _sortPendingPreservingDeferred(List<Task> list) {
     if (_deferredFilterTaskIds.isEmpty) {
-      list.sort(
-        (a, b) => compareTasksBySortMode(a, b, _sortMode, _categories),
-      );
+      list.sort((a, b) => compareTasksBySortMode(a, b, _sortMode, _categories));
       return list;
     }
 
-    final sortedOthers = list
-        .where((task) => !_deferredFilterTaskIds.contains(task.id))
-        .toList()
-      ..sort(
-        (a, b) => compareTasksBySortMode(a, b, _sortMode, _categories),
-      );
+    final sortedOthers =
+        list.where((task) => !_deferredFilterTaskIds.contains(task.id)).toList()
+          ..sort(
+            (a, b) => compareTasksBySortMode(a, b, _sortMode, _categories),
+          );
 
     var otherIndex = 0;
     return [
@@ -1027,8 +1034,8 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                 child: Text(
                   '並び替え',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
@@ -1086,10 +1093,64 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     );
     await _rememberLastRegistrationCategory(task.categoryId);
     if (task.isInbox) return;
-    _scheduleDeferredLayout(
-      taskId: task.id,
-      sortMode: TaskSortMode.category,
+    _scheduleDeferredLayout(taskId: task.id, sortMode: TaskSortMode.category);
+  }
+
+  Future<void> _showInboxCategoryPicker(Task task) async {
+    final categoryId = await InboxCategoryPickerSheet.show(
+      context,
+      categories: _categories,
+      selectedCategoryId: task.categoryId,
     );
+    if (!mounted || categoryId == null) return;
+    await _promoteInboxTask(task, categoryId: categoryId);
+  }
+
+  Future<void> _promoteInboxTask(
+    Task task, {
+    required String categoryId,
+  }) async {
+    if (!task.isInbox) return;
+
+    final categoryName = resolveCategory(categoryId, _categories).name;
+
+    await _updateTasks(() {
+      task.categoryId = categoryId;
+      task.isInbox = false;
+    });
+    unawaited(
+      widget.analyticsService.logCategoryChanged(
+        context: AnalyticsContext.inbox,
+      ),
+    );
+    await _rememberLastRegistrationCategory(categoryId);
+    _showInboxMoveFeedback(categoryName);
+    unawaited(widget.feedbackService.play(FeedbackEvent.taskRegistered));
+
+    if (_sortMode != TaskSortMode.manual) {
+      _scheduleDeferredLayout(
+        taskId: task.id,
+        sortMode: TaskSortMode.category,
+      );
+    }
+  }
+
+  void _showInboxMoveFeedback(String categoryName) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('$categoryNameへ移動しました'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  Future<void> _promoteInboxTaskWithCurrentCategory(Task task) async {
+    await _promoteInboxTask(task, categoryId: task.categoryId);
   }
 
   Future<void> _toggleFavorite(Task task) async {
@@ -1138,10 +1199,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       ),
     );
     if (task.isInbox) return;
-    _scheduleDeferredLayout(
-      taskId: task.id,
-      sortMode: TaskSortMode.priority,
-    );
+    _scheduleDeferredLayout(taskId: task.id, sortMode: TaskSortMode.priority);
   }
 
   Future<void> _pickDueDate(Task task) async {
@@ -1239,11 +1297,27 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
           onCompletedTaskRetentionChanged:
               widget.onCompletedTaskRetentionChanged,
           onDeleteAllCompletedTasks: _deleteAllCompletedTasks,
-          authUser: widget.authService.currentUser,
+          authService: widget.authService,
+          onSignInWithGoogle: () => _signInWithGuestMigration(
+            widget.authService.signInWithGoogle,
+          ),
+          onSignInWithApple: () => _signInWithGuestMigration(
+            widget.authService.signInWithApple,
+          ),
           onSignOut: widget.authService.signOut,
         ),
       ),
     );
+  }
+
+  Future<void> _signInWithGuestMigration(
+    Future<void> Function() signIn,
+  ) async {
+    final repository = widget.taskRepository;
+    if (repository is AuthAwareTaskRepository) {
+      repository.prepareGuestDataMigration();
+    }
+    await signIn();
   }
 
   @override
@@ -1253,14 +1327,17 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     final recentTasks = _recentlyAddedTasks();
     final pendingTasks = _filteredTasks(completed: false);
     final completedTasks = _filteredTasks(completed: true);
-    final hasFilter = _searchQuery.isNotEmpty ||
-    _categoryFilterIds.isNotEmpty;
-    final hasVisibleTasks = recentTasks.isNotEmpty ||
+    final hasFilter = _searchQuery.isNotEmpty || _categoryFilterIds.isNotEmpty;
+    final hasVisibleTasks =
+        recentTasks.isNotEmpty ||
         pendingTasks.isNotEmpty ||
         completedTasks.isNotEmpty;
-    final showNoResults = !_isLoading && _tasks.isNotEmpty && !hasVisibleTasks && hasFilter;
-    final showOrganizeButton =
-        !_isLoading && !_isOrganizing && recentTasks.isNotEmpty;
+    final showNoResults =
+        !_isLoading && _tasks.isNotEmpty && !hasVisibleTasks && hasFilter;
+    final showOrganizeButton = kAiOrganizeEnabled &&
+        !_isLoading &&
+        !_isOrganizing &&
+        recentTasks.isNotEmpty;
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
@@ -1269,7 +1346,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
               minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: FilledButton(
                 onPressed: _isOrganizing ? null : _organizeRecentTasks,
-                child: const Text('整理する'),
+                child: const Text('✨ AIで整理する'),
               ),
             )
           : null,
@@ -1278,7 +1355,8 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
             ? const Center(child: CircularProgressIndicator())
             : CustomScrollView(
                 controller: _scrollController,
-                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 slivers: [
                   SliverAppBar(
                     pinned: true,
@@ -1321,10 +1399,12 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                         onEdit: _showEditTaskSheet,
                         onDelete: _confirmDeleteTask,
                         onDismissDelete: _deleteTask,
-                        onCategoryTap: _cycleCategory,
+                        onCategoryTap: _showInboxCategoryPicker,
                         onPriorityTap: _cyclePriority,
                         onDueDateTap: _pickDueDate,
                         onFavoriteTap: _toggleFavorite,
+                        isInboxList: true,
+                        onPromoteTask: _promoteInboxTaskWithCurrentCategory,
                       ),
                     ),
                   SliverToBoxAdapter(
@@ -1357,21 +1437,20 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                   SliverToBoxAdapter(
                     child: CategoryBar(
                       categories: _categories,
-                      selectedId:
-    _categoryFilterIds.isEmpty
-        ? null
-        : _categoryFilterIds.first,
+                      selectedId: _categoryFilterIds.isEmpty
+                          ? null
+                          : _categoryFilterIds.first,
                       onSelected: (id) {
-  setState(() {
-    if (id == null) {
-      _categoryFilterIds.clear();
-    } else if (_categoryFilterIds.contains(id)) {
-      _categoryFilterIds.remove(id);
-    } else {
-      _categoryFilterIds.add(id);
-    }
-  });
-},
+                        setState(() {
+                          if (id == null) {
+                            _categoryFilterIds.clear();
+                          } else if (_categoryFilterIds.contains(id)) {
+                            _categoryFilterIds.remove(id);
+                          } else {
+                            _categoryFilterIds.add(id);
+                          }
+                        });
+                      },
                       onAdd: _addCategory,
                       onRename: _renameCategory,
                       onDelete: _deleteCategory,
@@ -1384,9 +1463,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                         child: Center(
                           child: Text(
                             '上の入力欄にタスクを入力して登録してください',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
+                            style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(color: colors.secondaryLabel),
                           ),
                         ),
@@ -1398,9 +1475,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                       child: Center(
                         child: Text(
                           '該当するタスクがありません',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyLarge
+                          style: Theme.of(context).textTheme.bodyLarge
                               ?.copyWith(color: colors.secondaryLabel),
                         ),
                       ),

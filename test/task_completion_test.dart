@@ -4,27 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:flowdo/main.dart';
-import 'package:flowdo/services/analytics/noop_analytics_service.dart';
-import 'package:flowdo/services/auth/noop_auth_service.dart';
-import 'package:flowdo/services/tasks/local_task_repository.dart';
 import 'package:flowdo/models/task.dart';
 import 'package:flowdo/widgets/task_tile.dart';
 
-Future<void> _pumpFlowDoWithTasks(WidgetTester tester, List<Task> tasks) async {
-  SharedPreferences.resetStatic();
-  SharedPreferences.setMockInitialValues({
-    'flowdo_tasks': jsonEncode(tasks.map((t) => t.toJson()).toList()),
-  });
-  Task.syncNextId(tasks);
+import 'flowdo_test_helpers.dart';
 
-  await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
-  for (var i = 0; i < 30; i++) {
-    await tester.pump(const Duration(milliseconds: 100));
-    if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
-      break;
-    }
-  }
+Future<void> _pumpFlowDoWithTasks(WidgetTester tester, List<Task> tasks) async {
+  await pumpFlowDoApp(
+    tester,
+    initialPreferences: {
+      'flowdo_tasks': jsonEncode(tasks.map((task) => task.toJson()).toList()),
+    },
+  );
+  Task.syncNextId(tasks);
 }
 
 Finder _taskTitle(String title) {

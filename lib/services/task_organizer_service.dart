@@ -23,7 +23,7 @@ abstract class TaskOrganizerService {
   });
 }
 
-/// ローカル整理（手動設定カテゴリー優先、未設定は AI / ダミー分類）
+/// ローカル整理（手動設定カテゴリー優先、未設定は AI 一括分類）
 class LocalTaskOrganizerService implements TaskOrganizerService {
   const LocalTaskOrganizerService({
     AiCategorizerService? categorizer,
@@ -37,31 +37,43 @@ class LocalTaskOrganizerService implements TaskOrganizerService {
     required List<CategoryItem> categories,
   }) async {
     final plans = <TaskOrganizationPlan>[];
+    final uncategorizedTasks = <Task>[];
 
     for (final task in inboxTasks) {
-      final categoryId = await _resolveCategoryId(
-        task: task,
+      if (_hasManualCategory(task, categories)) {
+        plans.add(
+          TaskOrganizationPlan(taskId: task.id, categoryId: task.categoryId),
+        );
+      } else {
+        uncategorizedTasks.add(task);
+      }
+    }
+
+    if (uncategorizedTasks.isNotEmpty) {
+      final batchResults = await _categorizer.categorizeBatch(
+        titles: uncategorizedTasks.map((task) => task.title).toList(growable: false),
         categories: categories,
       );
-      plans.add(TaskOrganizationPlan(taskId: task.id, categoryId: categoryId));
+
+      for (var i = 0; i < uncategorizedTasks.length; i++) {
+        final task = uncategorizedTasks[i];
+        final result = i < batchResults.length ? batchResults[i] : null;
+        plans.add(
+          TaskOrganizationPlan(
+            taskId: task.id,
+            categoryId: result?.categoryId ?? CategoryItem.uncategorizedId,
+            reason: result?.reason,
+          ),
+        );
+      }
     }
 
     return plans;
   }
 
-  Future<String> _resolveCategoryId({
-    required Task task,
-    required List<CategoryItem> categories,
-  }) async {
-    final hasManualCategory =
-        task.categoryId != CategoryItem.uncategorizedId &&
-            categories.any((c) => c.id == task.categoryId);
-
-    if (hasManualCategory) {
-      return task.categoryId;
-    }
-
-    return _categorizer.categorize(title: task.title, categories: categories);
+  bool _hasManualCategory(Task task, List<CategoryItem> categories) {
+    return task.categoryId != CategoryItem.uncategorizedId &&
+        categories.any((category) => category.id == task.categoryId);
   }
 }
 

@@ -31,8 +31,10 @@ class TaskTile extends StatelessWidget {
     this.showMetaChips = true,
     this.openEditOnRowTap = false,
     this.isCompletedList = false,
+    this.enableInboxPromoteSwipe = false,
+    this.onPromoteSwipe,
+    this.categoryChipTooltip,
   });
-
   final Task task;
   final CategoryItem category;
   final bool showCompletedStyle;
@@ -53,6 +55,9 @@ class TaskTile extends StatelessWidget {
   final bool showMetaChips;
   final bool openEditOnRowTap;
   final bool isCompletedList;
+  final bool enableInboxPromoteSwipe;
+  final Future<void> Function()? onPromoteSwipe;
+  final String? categoryChipTooltip;
 
   bool get _useCompletedVisual => isCompletedList || task.isCompleted;
 
@@ -71,8 +76,16 @@ class TaskTile extends StatelessWidget {
 
     return Dismissible(
       key: ValueKey(task.id),
-      direction: DismissDirection.endToStart,
-      confirmDismiss: (_) async {
+      direction: enableInboxPromoteSwipe
+          ? DismissDirection.horizontal
+          : DismissDirection.endToStart,
+      confirmDismiss: (direction) async {
+        if (enableInboxPromoteSwipe &&
+            direction == DismissDirection.startToEnd) {
+          await onPromoteSwipe?.call();
+          return false;
+        }
+
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
@@ -96,16 +109,51 @@ class TaskTile extends StatelessWidget {
         );
         return confirmed ?? false;
       },
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        color: colorScheme.errorContainer,
-        child: Icon(
-          Icons.delete_outline,
-          color: colorScheme.onErrorContainer,
-        ),
-      ),
-      onDismissed: (_) => onDismissDelete(),
+      background: enableInboxPromoteSwipe
+          ? Container(
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.only(left: 20),
+              color: category.color.withValues(alpha: 0.18),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.arrow_forward, color: category.color, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${category.name}へ',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: category.color,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ],
+              ),
+            )
+          : Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 20),
+              color: colorScheme.errorContainer,
+              child: Icon(
+                Icons.delete_outline,
+                color: colorScheme.onErrorContainer,
+              ),
+            ),
+      secondaryBackground: enableInboxPromoteSwipe
+          ? Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 20),
+              color: colorScheme.errorContainer,
+              child: Icon(
+                Icons.delete_outline,
+                color: colorScheme.onErrorContainer,
+              ),
+            )
+          : null,
+      onDismissed: (direction) {
+        if (direction == DismissDirection.endToStart) {
+          onDismissDelete();
+        }
+      },
       child: AnimatedOpacity(
         opacity: isRemoving || isLayoutAnimating ? 0.0 : 1.0,
         duration: const Duration(milliseconds: 250),
@@ -331,7 +379,7 @@ class TaskTile extends StatelessWidget {
             children: [
               _MetaTapChip(
                 label: category.name,
-                tooltip: category.name,
+                tooltip: categoryChipTooltip ?? category.name,
                 color: useMutedCompleted
                     ? category.color.withValues(alpha: 0.55)
                     : category.color,
@@ -545,6 +593,8 @@ class GroupedTaskList extends StatelessWidget {
     this.showMetaChips = true,
     this.openEditOnRowTap = false,
     this.isCompletedList = false,
+    this.isInboxList = false,
+    this.onPromoteTask,
   });
 
   final String title;
@@ -567,6 +617,8 @@ class GroupedTaskList extends StatelessWidget {
   final bool showMetaChips;
   final bool openEditOnRowTap;
   final bool isCompletedList;
+  final bool isInboxList;
+  final Future<void> Function(Task task)? onPromoteTask;
 
   @override
   Widget build(BuildContext context) {
@@ -665,6 +717,13 @@ class GroupedTaskList extends StatelessWidget {
                         showCompletionToggle: showCompletionToggle,
                         showMetaChips: showMetaChips,
                         openEditOnRowTap: openEditOnRowTap,
+                        enableInboxPromoteSwipe:
+                            isInboxList && onPromoteTask != null,
+                        onPromoteSwipe: isInboxList && onPromoteTask != null
+                            ? () => onPromoteTask!(tasks[i])
+                            : null,
+                        categoryChipTooltip:
+                            isInboxList ? 'リストへ移動' : null,
                         onToggle: () => onToggle(tasks[i]),
                         onEdit: () => onEdit(tasks[i]),
                         onDelete: () => onDelete(tasks[i]),

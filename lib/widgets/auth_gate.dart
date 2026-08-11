@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../config/app_features.dart';
 import '../screens/login_page.dart';
 import '../debug/startup_trace.dart';
 import '../services/auth/auth_service.dart';
 
-/// 認証状態に応じてログイン画面 / メイン画面を切り替える
+/// 認証状態に応じてログイン画面 / メイン画面を切り替える。
+///
+/// ゲストモード有効時は起動直後からメイン画面を表示する。
 class AuthGate extends StatelessWidget {
   const AuthGate({
     super.key,
@@ -17,6 +20,11 @@ class AuthGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (kGuestModeEnabled) {
+      startupTrace('AuthGate -> guest mode home');
+      return signedInBuilder(context);
+    }
+
     return StreamBuilder<AuthUser?>(
       stream: authService.authStateChanges,
       builder: (context, snapshot) {

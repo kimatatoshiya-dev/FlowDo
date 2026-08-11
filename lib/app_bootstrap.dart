@@ -9,6 +9,7 @@ import 'services/auth/auth_service.dart';
 import 'services/app_storage.dart';
 import 'services/crash_reporting.dart';
 import 'services/tasks/task_repository.dart';
+import '../config/app_features.dart';
 import '../debug/startup_trace.dart';
 
 /// Firebase（Core / Analytics / Crashlytics / Auth）とエラーハンドラを初期化する。
@@ -44,9 +45,13 @@ Future<AppBootstrapResult> bootstrapApp() async {
     authService.currentUser?.uid ?? 'null',
   );
   startupTrace('waitForInitialAuthState() starting');
-  await authService.waitForInitialAuthState();
+  if (kGuestModeEnabled) {
+    unawaited(authService.waitForInitialAuthState());
+  } else {
+    await authService.waitForInitialAuthState();
+  }
   startupTrace(
-    'waitForInitialAuthState() done',
+    'waitForInitialAuthState() scheduled/done',
     authService.currentUser?.uid ?? 'null',
   );
   await bootstrapAppStorage();
@@ -54,7 +59,8 @@ Future<AppBootstrapResult> bootstrapApp() async {
   final taskRepository = AuthAwareTaskRepository(
     firestoreFactory: (userId) => FirestoreTaskRepository(userId: userId),
     local: localTaskRepository,
-    currentUserId: () => authService.currentUser?.uid,
+    authStateChanges: authService.authStateChanges,
+    initialUserId: authService.currentUser?.uid,
   );
   startupTrace('taskRepository created');
   startupTrace('bootstrapApp() returning');

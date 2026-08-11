@@ -2,28 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:flowdo/main.dart';
-import 'package:flowdo/services/analytics/noop_analytics_service.dart';
-import 'package:flowdo/services/auth/noop_auth_service.dart';
-import 'package:flowdo/services/tasks/local_task_repository.dart';
+import 'package:flowdo/config/app_features.dart';
 import 'package:flowdo/widgets/category_bar.dart';
 
+import 'flowdo_test_helpers.dart';
+
 void main() {
-  const analyticsService = NoOpAnalyticsService();
-  const authService = NoOpAuthService();
-  final taskRepository = LocalTaskRepository();
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  tearDown(SharedPreferences.resetStatic);
 
   testWidgets('FlowDo が起動して入力欄を表示する', (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
-
-    await tester.pumpWidget(
-      FlowDoApp(
-        analyticsService: analyticsService,
-        authService: authService,
-        taskRepository: taskRepository,
-      ),
-    );
-    await tester.pumpAndSettle();
+    await pumpFlowDoApp(tester);
 
     expect(find.text('FlowDo'), findsOneWidget);
     expect(
@@ -36,13 +26,12 @@ void main() {
     expect(find.text('未完了'), findsOneWidget);
     expect(find.text('今日の期限'), findsOneWidget);
     expect(find.textContaining('ジムへ19時に行く'), findsOneWidget);
+
+    await drainFlowDoTimers(tester);
   });
 
   testWidgets('入力開始で入力例が消える', (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
-
-    await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
-    await tester.pumpAndSettle();
+    await pumpFlowDoApp(tester);
 
     expect(find.textContaining('ジムへ19時に行く'), findsOneWidget);
 
@@ -53,20 +42,12 @@ void main() {
     await tester.pump();
 
     expect(find.textContaining('ジムへ19時に行く'), findsNothing);
+
+    await drainFlowDoTimers(tester);
   });
 
   testWidgets('最近追加タスクでカテゴリー・優先度・期限を編集できる', (WidgetTester tester) async {
-    SharedPreferences.resetStatic();
-    SharedPreferences.setMockInitialValues({});
-
-    await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
-    for (var i = 0; i < 30; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-      if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
-        break;
-      }
-    }
-    await tester.pumpAndSettle();
+    await pumpFlowDoApp(tester);
 
     await tester.enterText(
       find.byKey(const ValueKey('task_input_field')),
@@ -74,8 +55,7 @@ void main() {
     );
     await tester.tap(find.text('登録'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pumpAndSettle();
+    await settleAfterTaskRegistration(tester);
 
     final taskTile = find.ancestor(
       of: find.text('編集テスト', skipOffstage: false),
@@ -93,20 +73,12 @@ void main() {
       find.descendant(of: taskTile, matching: find.text('期限なし')),
       findsOneWidget,
     );
+
+    await drainFlowDoTimers(tester);
   });
 
-  testWidgets('整理後は最近追加エリアが空になり整理ボタンが消える', (WidgetTester tester) async {
-    SharedPreferences.resetStatic();
-    SharedPreferences.setMockInitialValues({});
-
-    await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
-    for (var i = 0; i < 30; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-      if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
-        break;
-      }
-    }
-    await tester.pumpAndSettle();
+  testWidgets('無料版では整理ボタンは表示されない', (WidgetTester tester) async {
+    await pumpFlowDoApp(tester);
 
     await tester.enterText(
       find.byKey(const ValueKey('task_input_field')),
@@ -114,36 +86,17 @@ void main() {
     );
     await tester.tap(find.text('登録'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pumpAndSettle();
+    await settleAfterTaskRegistration(tester);
 
-    expect(find.text('整理する'), findsOneWidget);
+    expectOrganizeButtonHidden();
     expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
-
-    await tester.ensureVisible(find.text('整理する'));
-    await tester.tap(find.text('整理する'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pump(const Duration(milliseconds: 900));
-    await tester.pumpAndSettle();
-
-    expect(find.text('整理する'), findsNothing);
-    expect(find.textContaining('追加したタスク', skipOffstage: false), findsNothing);
     expect(find.text('整理テスト', skipOffstage: false), findsOneWidget);
+
+    await drainFlowDoTimers(tester);
   });
 
   testWidgets('登録したタスクは最近追加エリアに表示される', (WidgetTester tester) async {
-    SharedPreferences.resetStatic();
-    SharedPreferences.setMockInitialValues({});
-
-    await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
-    for (var i = 0; i < 30; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-      if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
-        break;
-      }
-    }
-    await tester.pumpAndSettle();
+    await pumpFlowDoApp(tester);
 
     await tester.enterText(
       find.byKey(const ValueKey('task_input_field')),
@@ -151,29 +104,30 @@ void main() {
     );
     await tester.tap(find.text('登録'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pumpAndSettle();
+    await settleAfterTaskRegistration(tester);
 
     final taskFinder = find.text('Inboxタスク', skipOffstage: false);
     expect(taskFinder, findsOneWidget);
     await tester.ensureVisible(taskFinder);
-    await tester.pumpAndSettle();
+    await settleFlowDoUi(tester);
 
-    expect(find.text('整理する'), findsOneWidget);
+    if (!kAiOrganizeEnabled) {
+      expectOrganizeButtonHidden();
+    }
     expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
+
+    await drainFlowDoTimers(tester);
   });
 
   testWidgets('カテゴリー追加後も Red Screen にならない', (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
-
-    await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
-    await tester.pumpAndSettle();
+    await pumpFlowDoApp(tester);
 
     final addChip = find.byKey(const ValueKey('category_add_chip'));
     await tester.ensureVisible(addChip);
-    await tester.pumpAndSettle();
+    await settleFlowDoUi(tester);
     await tester.tap(addChip);
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await settleFlowDoUi(tester);
 
     await tester.enterText(
       find.descendant(
@@ -182,20 +136,29 @@ void main() {
       ),
       '買い物',
     );
-    await tester.tap(find.text('追加'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('追加'),
+      ),
+    );
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    await tester.pumpAndSettle();
+    await settleAfterDialogClosed(tester);
 
     expect(tester.takeException(), isNull);
-    expect(find.text('買い物'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(CategoryBar),
+        matching: find.text('買い物'),
+      ),
+      findsOneWidget,
+    );
+
+    await drainFlowDoTimers(tester);
   });
 
   testWidgets('カテゴリーフィルターに未分類は表示しない', (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
-
-    await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
-    await tester.pumpAndSettle();
+    await pumpFlowDoApp(tester);
 
     expect(
       find.descendant(
@@ -211,20 +174,12 @@ void main() {
       ),
       findsOneWidget,
     );
+
+    await drainFlowDoTimers(tester);
   });
 
   testWidgets('未分類に変更しても次回登録の初期値は仕事のまま', (WidgetTester tester) async {
-    SharedPreferences.resetStatic();
-    SharedPreferences.setMockInitialValues({});
-
-    await tester.pumpWidget(FlowDoApp(analyticsService: NoOpAnalyticsService(), authService: NoOpAuthService(), taskRepository: LocalTaskRepository()));
-    for (var i = 0; i < 30; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-      if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
-        break;
-      }
-    }
-    await tester.pumpAndSettle();
+    await pumpFlowDoApp(tester);
 
     await tester.enterText(
       find.byKey(const ValueKey('task_input_field')),
@@ -232,8 +187,7 @@ void main() {
     );
     await tester.tap(find.text('登録'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pumpAndSettle();
+    await settleAfterTaskRegistration(tester);
 
     final firstTile = find.ancestor(
       of: find.text('1件目', skipOffstage: false),
@@ -243,13 +197,18 @@ void main() {
       find.descendant(of: firstTile, matching: find.text('仕事')),
     );
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.descendant(of: firstTile, matching: find.text('未分類')),
-      findsOneWidget,
+    await settleFlowDoUi(tester);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.text('未分類'),
+      ),
     );
+    await tester.pump();
+    await settleAfterDialogClosed(tester);
+
+    expect(find.text('未分類へ移動しました'), findsOneWidget);
+    expect(find.textContaining('追加したタスク', skipOffstage: false), findsNothing);
 
     await tester.enterText(
       find.byKey(const ValueKey('task_input_field')),
@@ -257,8 +216,7 @@ void main() {
     );
     await tester.tap(find.text('登録'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pumpAndSettle();
+    await settleAfterTaskRegistration(tester);
 
     final secondTile = find.ancestor(
       of: find.text('2件目', skipOffstage: false),
@@ -268,5 +226,7 @@ void main() {
       find.descendant(of: secondTile, matching: find.text('仕事')),
       findsOneWidget,
     );
+
+    await drainFlowDoTimers(tester);
   });
 }
