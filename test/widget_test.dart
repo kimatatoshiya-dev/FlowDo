@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flowdo/config/app_features.dart';
+import 'package:flowdo/models/flowdo_calendar.dart';
 import 'package:flowdo/widgets/category_bar.dart';
 import 'package:flowdo/widgets/task_tile.dart';
 
@@ -24,10 +25,11 @@ void main() {
     expect(find.text('改行ごとに1件のタスクになります。'), findsOneWidget);
     expect(find.text('まず全部書き出そう。整理はあとから。'), findsOneWidget);
     expect(find.text('登録'), findsOneWidget);
-    expect(find.text('今日やること'), findsOneWidget);
-    expect(find.text('重要'), findsOneWidget);
-    expect(find.text('今日期限'), findsOneWidget);
-    expect(find.text('7日以内'), findsOneWidget);
+    expect(
+      find.text(formatCalendarMonthTitle(DateTime.now())),
+      findsOneWidget,
+    );
+    expect(find.text('📌'), findsWidgets);
     expect(find.textContaining('ジムへ19時に行く'), findsOneWidget);
 
     await drainFlowDoTimers(tester);

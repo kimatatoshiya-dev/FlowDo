@@ -13,6 +13,7 @@ import 'models/task.dart';
 import 'models/task_priority.dart';
 import 'models/task_edit_result.dart';
 import 'models/task_sort_mode.dart';
+import 'models/flowdo_calendar.dart';
 import 'models/today_focus.dart';
 import 'models/today_focus_completion_message.dart';
 import 'models/completed_task_retention.dart';
@@ -32,8 +33,8 @@ import 'theme/app_theme.dart';
 import 'widgets/auth_gate.dart';
 import 'widgets/category_bar.dart';
 import 'widgets/category_name_dialog.dart';
+import 'widgets/calendar_day_task_sheet.dart';
 import 'widgets/home_dashboard.dart';
-import 'widgets/today_focus_task_sheet.dart';
 import 'widgets/inbox_category_picker_sheet.dart';
 import 'widgets/task_add_sheet.dart';
 import 'widgets/task_input_bar.dart';
@@ -502,7 +503,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     _todayFocusSheetRevision.value++;
   }
 
-  Future<void> _showTodayFocusTaskSheet() async {
+  Future<void> _showCalendarDaySheet(DateTime day) async {
     _refreshTodayFocusSheet();
     await showModalBottomSheet<void>(
       context: context,
@@ -510,8 +511,9 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       showDragHandle: true,
       builder: (context) => ValueListenableBuilder<int>(
         valueListenable: _todayFocusSheetRevision,
-        builder: (context, _, __) => TodayFocusTaskSheet(
-          sections: _todayFocusSections,
+        builder: (context, _, __) => CalendarDayTaskSheet(
+          day: day,
+          entries: calendarTasksForDay(tasks: _tasks, day: day),
           onToggleTask: (taskId) async {
             final index = _tasks.indexWhere((task) => task.id == taskId);
             if (index < 0) return;
@@ -1942,11 +1944,9 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                     ),
                   SliverToBoxAdapter(
                     child: HomeDashboard(
-                      pinnedCount: _pinnedCount,
-                      dueTodayCount: _dueTodayCount,
-                      dueWithin7DaysCount: _dueWithin7DaysCount,
+                      calendarData: buildFlowDoCalendarMonth(tasks: _tasks),
+                      onCalendarDayTap: _showCalendarDaySheet,
                       categoryCounts: _categoryIncompleteCounts,
-                      onOpenTodayFocusSheet: _showTodayFocusTaskSheet,
                     ),
                   ),
                   SliverToBoxAdapter(
