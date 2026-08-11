@@ -13,10 +13,36 @@ enum TaskSortMode {
   final String label;
 }
 
-/// 固定（📌）タスクを同一グループ内の最上位に並べる
-int compareFavoriteFirst(Task a, Task b) {
-  if (a.isFavorite == b.isFavorite) return 0;
-  return a.isFavorite ? -1 : 1;
+/// 固定（📌）タスクを同一グループ内の最上位に並べ、固定同士は 📌 した順
+int comparePinnedOrder(Task a, Task b) {
+  if (a.isFavorite != b.isFavorite) {
+    return a.isFavorite ? -1 : 1;
+  }
+  if (!a.isFavorite) return 0;
+
+  final aAt = a.pinnedAt;
+  final bAt = b.pinnedAt;
+  if (aAt != null && bAt != null) {
+    final timeCompare = aAt.compareTo(bAt);
+    if (timeCompare != 0) return timeCompare;
+  } else if (aAt != null) {
+    return -1;
+  } else if (bAt != null) {
+    return 1;
+  }
+  return a.id.compareTo(b.id);
+}
+int _lastPinnedIndexInGroup({
+  required List<Task> tasks,
+  required bool Function(Task task) inGroup,
+}) {
+  var lastIndex = -1;
+  for (var i = 0; i < tasks.length; i++) {
+    if (inGroup(tasks[i]) && tasks[i].isFavorite) {
+      lastIndex = i;
+    }
+  }
+  return lastIndex;
 }
 
 /// 固定 ON/OFF 後に [_tasks] 全体へ挿入するインデックス
@@ -28,11 +54,11 @@ int pinReorderIndex({
 }) {
   if (task.isInbox) {
     if (task.isFavorite) {
-      for (var i = 0; i < tasks.length; i++) {
-        final t = tasks[i];
-        if (t.isInbox && !t.isCompleted) return i;
-      }
-      return tasks.length;
+      return _lastPinnedIndexInGroup(
+            tasks: tasks,
+            inGroup: (t) => t.isInbox && !t.isCompleted,
+          ) +
+          1;
     }
 
     for (var i = 0; i < tasks.length; i++) {
@@ -48,11 +74,11 @@ int pinReorderIndex({
   }
 
   if (task.isFavorite) {
-    for (var i = 0; i < tasks.length; i++) {
-      final t = tasks[i];
-      if (!t.isCompleted && !t.isInbox) return i;
-    }
-    return tasks.length;
+    return _lastPinnedIndexInGroup(
+          tasks: tasks,
+          inGroup: (t) => !t.isCompleted && !t.isInbox,
+        ) +
+        1;
   }
 
   for (var i = 0; i < tasks.length; i++) {
@@ -79,8 +105,8 @@ int compareTasksBySortMode(
   TaskSortMode mode,
   List<CategoryItem> categories,
 ) {
-  final favoriteCompare = compareFavoriteFirst(a, b);
-  if (favoriteCompare != 0) return favoriteCompare;
+  final pinnedCompare = comparePinnedOrder(a, b);
+  if (pinnedCompare != 0) return pinnedCompare;
 
   return switch (mode) {
     TaskSortMode.manual => a.id.compareTo(b.id),

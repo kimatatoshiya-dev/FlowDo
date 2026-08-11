@@ -12,6 +12,7 @@ class Task {
     this.categoryId = CategoryItem.uncategorizedId,
     this.priorityStars = TaskPriorityStars.none,
     this.isFavorite = false,
+    this.pinnedAt,
     this.dueDate,
     this.completedAt,
     DateTime? createdAt,
@@ -24,6 +25,7 @@ class Task {
   String categoryId;
   int priorityStars;
   bool isFavorite;
+  DateTime? pinnedAt;
   DateTime? dueDate;
   DateTime? completedAt;
   final DateTime createdAt;
@@ -83,6 +85,7 @@ class Task {
         'categoryId': categoryId,
         'priorityStars': priorityStars,
         'isFavorite': isFavorite,
+        'pinnedAt': pinnedAt?.toIso8601String(),
         'dueDate': dueDate?.toIso8601String(),
         'completedAt': completedAt?.toIso8601String(),
         'createdAt': createdAt.toIso8601String(),
@@ -125,6 +128,18 @@ class Task {
       throw FormatException('Task requires id and title: $json');
     }
 
+    DateTime? pinnedAt;
+    final pinnedAtRaw = JsonRead.string(json['pinnedAt']);
+    if (pinnedAtRaw != null) {
+      pinnedAt = DateTime.tryParse(pinnedAtRaw);
+    }
+
+    final isFavorite = json['isFavorite'] as bool? ?? false;
+    // 旧データ: 固定済みだが pinnedAt がない場合は作成日時で順序を安定化
+    if (isFavorite && pinnedAt == null) {
+      pinnedAt = createdAt;
+    }
+
     return Task(
       id: id,
       title: title,
@@ -133,7 +148,8 @@ class Task {
       isInbox: json['isInbox'] as bool? ?? false,
       categoryId: categoryId,
       priorityStars: priorityStars.clamp(0, TaskPriorityStars.max),
-      isFavorite: json['isFavorite'] as bool? ?? false,
+      isFavorite: isFavorite,
+      pinnedAt: pinnedAt,
       dueDate: dueDate,
       completedAt: completedAt,
       createdAt: createdAt,

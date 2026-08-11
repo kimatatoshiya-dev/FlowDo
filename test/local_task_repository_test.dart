@@ -62,4 +62,21 @@ void main() {
     expect(loaded, hasLength(2));
     expect(loaded.map((task) => task.title), ['One', 'Two']);
   });
+
+  test('updateTask after syncTasks does not drop other tasks', () async {
+    final repository = LocalTaskRepository();
+    final first = Task.create(title: 'One', categoryId: 'work');
+    final second = Task.create(title: 'Two', categoryId: 'work');
+    await repository.syncTasks([first, second]);
+
+    first.isFavorite = true;
+    first.pinnedAt = DateTime(2026, 1, 1, 12);
+    await repository.updateTask(first);
+
+    final loaded = await repository.loadTasks();
+    expect(loaded, hasLength(2));
+    expect(loaded.first.title, 'One');
+    expect(loaded.first.isFavorite, isTrue);
+    expect(loaded.last.title, 'Two');
+  });
 }

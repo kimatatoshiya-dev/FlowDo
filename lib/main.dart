@@ -778,24 +778,44 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
 
     final existingById = {for (final task in _tasks) task.id: task};
     final remoteIds = {for (final task in retainedTasks) task.id};
-    // updateTask の古いスナップショット等でリモートが欠ける場合、ローカル行を維持する
-    final localOnlyTasks = _tasks
-        .where((task) => !remoteIds.contains(task.id))
-        .toList(growable: false);
+    final mergedById = {
+      for (final remote in retainedTasks)
+        remote.id: _mergeTaskFromRemote(
+          remote: remote,
+          existing: existingById[remote.id],
+        ),
+    };
 
     final wasLoading = _isLoading;
+    final updatedTasks = <Task>[];
+
+    if (wasLoading || _tasks.isEmpty) {
+      updatedTasks.addAll([
+        for (final remote in retainedTasks) mergedById[remote.id]!,
+      ]);
+    } else {
+      final seen = <int>{};
+      for (final task in _tasks) {
+        final merged = mergedById[task.id];
+        if (merged != null) {
+          updatedTasks.add(merged);
+          seen.add(task.id);
+        } else if (!remoteIds.contains(task.id)) {
+          updatedTasks.add(task);
+          seen.add(task.id);
+        }
+      }
+      for (final remote in retainedTasks) {
+        if (!seen.contains(remote.id)) {
+          updatedTasks.add(mergedById[remote.id]!);
+        }
+      }
+    }
 
     setState(() {
       _tasks
         ..clear()
-        ..addAll([
-          for (final remote in retainedTasks)
-            _mergeTaskFromRemote(
-              remote: remote,
-              existing: existingById[remote.id],
-            ),
-          ...localOnlyTasks,
-        ]);
+        ..addAll(updatedTasks);
       _isLoading = false;
     });
 
@@ -819,6 +839,11 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     if (existing == null) {
       if (favoriteUpdatePending && pendingFavorite != null) {
         remote.isFavorite = pendingFavorite;
+        if (pendingFavorite) {
+          remote.pinnedAt ??= DateTime.now();
+        } else {
+          remote.pinnedAt = null;
+        }
       }
       return remote;
     }
@@ -838,9 +863,18 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       if (pendingFavorite != null && remote.isFavorite == pendingFavorite) {
         _pendingFavoriteByTaskId.remove(taskId);
         existing.isFavorite = remote.isFavorite;
+        existing.pinnedAt = remote.pinnedAt;
+      } else if (pendingFavorite != null) {
+        existing.isFavorite = pendingFavorite;
+        if (pendingFavorite) {
+          existing.pinnedAt ??= DateTime.now();
+        } else {
+          existing.pinnedAt = null;
+        }
       }
     } else {
       existing.isFavorite = remote.isFavorite;
+      existing.pinnedAt = remote.isFavorite ? remote.pinnedAt : null;
     }
 
     return existing;
@@ -1094,8 +1128,8 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     }).toList();
 
     list.sort((a, b) {
-      final favoriteCompare = compareFavoriteFirst(a, b);
-      if (favoriteCompare != 0) return favoriteCompare;
+      final pinnedCompare = comparePinnedOrder(a, b);
+      if (pinnedCompare != 0) return pinnedCompare;
       return b.createdAt.compareTo(a.createdAt);
     });
     return list;
@@ -1354,6 +1388,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
 
     final target = _tasks[index];
     final pinned = !target.isFavorite;
+    final previousPinnedAt = target.pinnedAt;
     _pendingFavoriteByTaskId[target.id] = pinned;
 
     if (_showFavoriteGuidance) {
@@ -1364,6 +1399,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     try {
       await _updateTasks(() {
         target.isFavorite = pinned;
+        target.pinnedAt = pinned ? DateTime.now() : null;
         _tasks.removeAt(index);
         _tasks.insert(
           pinReorderIndex(
@@ -1375,7 +1411,6 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
           target,
         );
       });
-      _pendingFavoriteByTaskId.remove(target.id);
       if (mounted) _showPinFeedback(pinned: pinned);
     } catch (error, stack) {
       debugPrint('Failed to update pin: $error');
@@ -1385,6 +1420,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       if (revertIndex < 0) return;
       setState(() {
         _tasks[revertIndex].isFavorite = !pinned;
+        _tasks[revertIndex].pinnedAt = previousPinnedAt;
       });
       _pendingFavoriteByTaskId.remove(target.id);
     }

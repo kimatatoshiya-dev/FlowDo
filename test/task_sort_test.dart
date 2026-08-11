@@ -121,15 +121,42 @@ void main() {
 
   group('sortTaskList', () {
     test('手動順は固定タスクだけ最上位へ', () {
+      final pinTime = DateTime(2026, 1, 1, 12);
       final tasks = [
         Task(id: 3, title: 'c', priorityStars: TaskPriorityStars.max),
-        Task(id: 1, title: 'a', isFavorite: true),
+        Task(id: 1, title: 'a', isFavorite: true, pinnedAt: pinTime),
         Task(id: 2, title: 'b', priorityStars: 1),
       ];
 
       final sorted = sortTaskList(tasks, TaskSortMode.manual, categories);
 
       expect(sorted.map((t) => t.id).toList(), [1, 2, 3]);
+    });
+
+    test('固定タスク同士は📌した順', () {
+      final firstPin = DateTime(2026, 1, 1, 12);
+      final secondPin = DateTime(2026, 1, 1, 13);
+      final pinnedA = Task(
+        id: 1,
+        title: 'a',
+        isFavorite: true,
+        pinnedAt: firstPin,
+      );
+      final pinnedB = Task(
+        id: 2,
+        title: 'b',
+        isFavorite: true,
+        pinnedAt: secondPin,
+      );
+
+      expect(comparePinnedOrder(pinnedA, pinnedB), lessThan(0));
+
+      final sorted = sortTaskList(
+        [pinnedB, pinnedA],
+        TaskSortMode.priority,
+        categories,
+      );
+      expect(sorted.map((t) => t.id).toList(), [1, 2]);
     });
 
     test('固定タスクは優先度順でも最上位', () {
@@ -139,6 +166,7 @@ void main() {
         title: 'important',
         priorityStars: 1,
         isFavorite: true,
+        pinnedAt: DateTime(2026, 1, 1),
       );
 
       expect(
@@ -199,12 +227,40 @@ void main() {
   });
 
   group('pinReorderIndex', () {
-    test('固定 ON で先頭へ', () {
+    test('固定 ON で既存固定の末尾へ', () {
+      final pinTime = DateTime(2026, 1, 1, 12);
+      final tasks = [
+        Task(id: 1, title: 'a', isFavorite: true, pinnedAt: pinTime),
+        Task(id: 2, title: 'b'),
+      ];
+      final pinned = Task(
+        id: 3,
+        title: 'c',
+        isFavorite: true,
+        pinnedAt: DateTime(2026, 1, 1, 13),
+      );
+
+      final index = pinReorderIndex(
+        tasks: tasks,
+        task: pinned,
+        sortMode: TaskSortMode.priority,
+        categories: categories,
+      );
+
+      expect(index, 1);
+    });
+
+    test('固定 ON で先頭固定がなければ先頭', () {
       final tasks = [
         Task(id: 1, title: 'a'),
         Task(id: 3, title: 'c'),
       ];
-      final pinned = Task(id: 3, title: 'c', isFavorite: true);
+      final pinned = Task(
+        id: 3,
+        title: 'c',
+        isFavorite: true,
+        pinnedAt: DateTime(2026, 1, 1),
+      );
 
       final index = pinReorderIndex(
         tasks: tasks,
@@ -214,6 +270,41 @@ void main() {
       );
 
       expect(index, 0);
+    });
+
+    test('再📌は固定グループの末尾へ', () {
+      final firstPin = DateTime(2026, 1, 1, 12);
+      final secondPin = DateTime(2026, 1, 1, 13);
+      final thirdPin = DateTime(2026, 1, 1, 14);
+      final tasks = [
+        Task(
+          id: 1,
+          title: 'a',
+          isFavorite: true,
+          pinnedAt: firstPin,
+        ),
+        Task(
+          id: 2,
+          title: 'b',
+          isFavorite: true,
+          pinnedAt: secondPin,
+        ),
+      ];
+      final repinnedA = Task(
+        id: 1,
+        title: 'a',
+        isFavorite: true,
+        pinnedAt: thirdPin,
+      );
+
+      final index = pinReorderIndex(
+        tasks: [tasks[1]],
+        task: repinnedA,
+        sortMode: TaskSortMode.priority,
+        categories: categories,
+      );
+
+      expect(index, 1);
     });
 
     test('固定 OFF でもリストから消えない位置へ', () {

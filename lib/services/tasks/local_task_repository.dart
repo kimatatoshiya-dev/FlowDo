@@ -14,6 +14,8 @@ class LocalTaskRepository implements TaskRepository {
 
   bool _hasSeededStream = false;
 
+  List<Task>? _memoryTasks;
+
   @override
   Stream<List<Task>> watchTasks() async* {
     startupTrace('LocalTaskRepository.watchTasks() entered');
@@ -28,10 +30,14 @@ class LocalTaskRepository implements TaskRepository {
 
   @override
   Future<List<Task>> loadTasks() async {
+    if (_memoryTasks != null) {
+      return List<Task>.from(_memoryTasks!);
+    }
     startupTrace('LocalTaskRepository.loadTasks() starting');
     final tasks = await AppStorage.loadTasks();
+    _memoryTasks = tasks;
     startupTrace('LocalTaskRepository.loadTasks() done', '${tasks.length} task(s)');
-    return tasks;
+    return List<Task>.from(tasks);
   }
 
   @override
@@ -58,7 +64,8 @@ class LocalTaskRepository implements TaskRepository {
         ..priorityStars = task.priorityStars
         ..dueDate = task.dueDate
         ..completedAt = task.completedAt
-        ..isFavorite = task.isFavorite;
+        ..isFavorite = task.isFavorite
+        ..pinnedAt = task.pinnedAt;
     }
     Task.syncNextId(tasks);
     await _persist(tasks);
@@ -79,9 +86,10 @@ class LocalTaskRepository implements TaskRepository {
   }
 
   Future<void> _persist(List<Task> tasks) async {
+    _memoryTasks = List<Task>.from(tasks);
     await AppStorage.saveTasks(tasks);
     if (!_tasksController.isClosed) {
-      _tasksController.add(List<Task>.from(tasks));
+      _tasksController.add(List<Task>.from(_memoryTasks!));
     }
   }
 }
