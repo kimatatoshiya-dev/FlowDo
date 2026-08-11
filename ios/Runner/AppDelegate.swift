@@ -7,6 +7,9 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    // WORKAROUND(ios-launch): Flutter #153971 / #187544 向け。
+    // 公式 Engine 修正後は FlowDoLaunchPrewarm モジュールごと削除（FlowDoLaunchPrewarm.h 参照）。
+    FlowDoPrewarmLaunchEngine(self)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
