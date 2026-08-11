@@ -14,6 +14,9 @@ const flowDoTestAuthService = NoOpAuthService();
 /// 登録フィードバック等の短い遅延を消化する待機時間
 const flowDoRegistrationSettleDuration = Duration(milliseconds: 600);
 
+/// Inbox 整理（リストへ移動）の待機時間
+const flowDoInboxPromoteDelayDuration = Duration(milliseconds: 2500);
+
 /// テスト用に FlowDoApp を起動し、初期ロード完了まで待つ。
 Future<void> pumpFlowDoApp(
   WidgetTester tester, {
@@ -57,17 +60,32 @@ Future<void> settleAfterDialogClosed(WidgetTester tester) async {
 /// タスク登録後のフィードバックタイマーを消化する
 Future<void> settleAfterTaskRegistration(WidgetTester tester) async {
   await tester.pump(flowDoRegistrationSettleDuration);
+  await tester.pump(const Duration(milliseconds: 500));
+}
+
+/// Inbox 整理の待機アニメーション完了まで進める
+Future<void> settleInboxPromoteDelay(WidgetTester tester) async {
+  await tester.pump(flowDoInboxPromoteDelayDuration);
+  for (var i = 0; i < 10; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+  await settleFlowDoUi(tester);
 }
 
 /// テスト終了前に残りタイマーを消化する
 Future<void> drainFlowDoTimers(WidgetTester tester) async {
   await tester.pump(flowDoRegistrationSettleDuration);
+  await tester.pump(flowDoInboxPromoteDelayDuration);
 }
 
 /// 無料版では AI 整理ボタンが非表示であることを検証する。
-void expectOrganizeButtonHidden() {
+void expectAiOrganizeButtonHidden() {
   expect(find.text('✨ AIで整理する'), findsNothing);
-  expect(find.text('整理する'), findsNothing);
+}
+
+/// 無料版では手動の「整理する」ボタンが表示されることを検証する。
+void expectManualOrganizeButtonVisible() {
+  expect(find.text('整理する'), findsOneWidget);
 }
 
 /// 有料版向け: AI 整理ボタンの Finder。

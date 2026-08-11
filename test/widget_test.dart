@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flowdo/config/app_features.dart';
 import 'package:flowdo/widgets/category_bar.dart';
+import 'package:flowdo/widgets/task_tile.dart';
 
 import 'flowdo_test_helpers.dart';
 
@@ -77,7 +78,8 @@ void main() {
     await drainFlowDoTimers(tester);
   });
 
-  testWidgets('無料版では整理ボタンは表示されない', (WidgetTester tester) async {
+  testWidgets('無料版ではAI整理ボタンは非表示で手動整理ボタンが表示される',
+      (WidgetTester tester) async {
     await pumpFlowDoApp(tester);
 
     await tester.enterText(
@@ -88,7 +90,8 @@ void main() {
     await tester.pump();
     await settleAfterTaskRegistration(tester);
 
-    expectOrganizeButtonHidden();
+    expectAiOrganizeButtonHidden();
+    expectManualOrganizeButtonVisible();
     expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
     expect(find.text('整理テスト', skipOffstage: false), findsOneWidget);
 
@@ -112,9 +115,60 @@ void main() {
     await settleFlowDoUi(tester);
 
     if (!kAiOrganizeEnabled) {
-      expectOrganizeButtonHidden();
+      expectAiOrganizeButtonHidden();
+      expectManualOrganizeButtonVisible();
     }
     expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
+
+    await drainFlowDoTimers(tester);
+  });
+
+  testWidgets('初回登録後にInbox案内バナーを表示する', (WidgetTester tester) async {
+    await pumpFlowDoApp(tester);
+
+    expect(find.text(InboxGuidanceBanner.message), findsNothing);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('task_input_field')),
+      '初回Inbox案内',
+    );
+    await tester.tap(find.text('登録'));
+    await tester.pump();
+    await settleAfterTaskRegistration(tester);
+
+    expect(find.text(InboxGuidanceBanner.message), findsOneWidget);
+
+    await drainFlowDoTimers(tester);
+  });
+
+  testWidgets('整理するボタンでInboxへ案内する', (WidgetTester tester) async {
+    await pumpFlowDoApp(
+      tester,
+      initialPreferences: {
+        'flowdo_input_guidance_seen': true,
+        'flowdo_favorite_guidance_seen': true,
+      },
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('task_input_field')),
+      '整理ボタン確認',
+    );
+    await tester.tap(find.text('登録'));
+    await tester.pump();
+    await settleAfterTaskRegistration(tester);
+
+    final organizeButton = find.text('整理する');
+    await tester.ensureVisible(organizeButton);
+    await tester.tap(organizeButton);
+    for (var i = 0; i < 15; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.text('追加したタスクを整理しましょう').evaluate().isNotEmpty) {
+        break;
+      }
+    }
+
+    expect(find.text('追加したタスクを整理しましょう'), findsOneWidget);
 
     await drainFlowDoTimers(tester);
   });
@@ -193,9 +247,13 @@ void main() {
       of: find.text('1件目', skipOffstage: false),
       matching: find.byType(Dismissible),
     );
-    await tester.tap(
-      find.descendant(of: firstTile, matching: find.text('仕事')),
+    final categoryChip = find.descendant(
+      of: firstTile,
+      matching: find.text('仕事'),
     );
+    await tester.ensureVisible(categoryChip);
+    await settleFlowDoUi(tester);
+    await tester.tap(categoryChip);
     await tester.pump();
     await settleFlowDoUi(tester);
     await tester.tap(
@@ -206,6 +264,7 @@ void main() {
     );
     await tester.pump();
     await settleAfterDialogClosed(tester);
+    await settleInboxPromoteDelay(tester);
 
     expect(find.text('未分類へ移動しました'), findsOneWidget);
     expect(find.textContaining('追加したタスク', skipOffstage: false), findsNothing);

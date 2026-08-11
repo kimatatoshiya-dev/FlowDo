@@ -120,16 +120,36 @@ void main() {
   });
 
   group('sortTaskList', () {
-    test('手動順では元の順序を維持', () {
+    test('手動順は重要タスクだけ最上位へ', () {
       final tasks = [
         Task(id: 3, title: 'c', priorityStars: TaskPriorityStars.max),
-        Task(id: 1, title: 'a'),
+        Task(id: 1, title: 'a', isFavorite: true),
         Task(id: 2, title: 'b', priorityStars: 1),
       ];
 
       final sorted = sortTaskList(tasks, TaskSortMode.manual, categories);
 
-      expect(sorted.map((t) => t.id).toList(), [3, 1, 2]);
+      expect(sorted.map((t) => t.id).toList(), [1, 2, 3]);
+    });
+
+    test('重要タスクは優先度順でも最上位', () {
+      final normalHigh = Task(id: 1, title: 'normal', priorityStars: 5);
+      final importantLow = Task(
+        id: 2,
+        title: 'important',
+        priorityStars: 1,
+        isFavorite: true,
+      );
+
+      expect(
+        compareTasksBySortMode(
+          importantLow,
+          normalHigh,
+          TaskSortMode.priority,
+          categories,
+        ),
+        lessThan(0),
+      );
     });
 
     test('優先度順で未完了・完了をそれぞれ並び替える', () {

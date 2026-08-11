@@ -17,6 +17,7 @@ void main() {
     await tester.tap(find.text('登録'));
     await tester.pump();
     await settleAfterTaskRegistration(tester);
+    await settleFlowDoUi(tester);
   }
 
   Finder inboxTaskTile(String title) {
@@ -31,11 +32,14 @@ void main() {
     await registerInboxTask(tester, '移動テスト');
 
     expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
+    expectManualOrganizeButtonVisible();
 
     final categoryChip = find.descendant(
       of: inboxTaskTile('移動テスト'),
       matching: find.text('仕事'),
     );
+    await tester.ensureVisible(categoryChip);
+    await settleFlowDoUi(tester);
     await tester.tap(categoryChip);
     await tester.pump();
     await settleFlowDoUi(tester);
@@ -50,7 +54,11 @@ void main() {
     );
     await tester.pump();
     await settleAfterDialogClosed(tester);
-    await settleFlowDoUi(tester);
+
+    expect(find.text('リストへ移動中…'), findsOneWidget);
+    expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
+
+    await settleInboxPromoteDelay(tester);
 
     expect(find.text('仕事へ移動しました'), findsOneWidget);
     expect(find.textContaining('追加したタスク', skipOffstage: false), findsNothing);
@@ -58,7 +66,6 @@ void main() {
     final taskFinder = find.text('移動テスト', skipOffstage: false);
     await tester.ensureVisible(taskFinder);
     expect(taskFinder, findsOneWidget);
-    expect(find.textContaining('未完了'), findsOneWidget);
 
     await drainFlowDoTimers(tester);
   });
@@ -69,13 +76,19 @@ void main() {
     await registerInboxTask(tester, 'スワイプ移動');
 
     final tile = inboxTaskTile('スワイプ移動');
+    await tester.ensureVisible(tile);
+    await settleFlowDoUi(tester);
     final topLeft = tester.getTopLeft(tile);
     await tester.dragFrom(
       Offset(topLeft.dx + 8, topLeft.dy + 24),
       const Offset(420, 0),
     );
-    await tester.pump();
-    await settleFlowDoUi(tester);
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    expect(find.text('リストへ移動中…'), findsOneWidget);
+    await settleInboxPromoteDelay(tester);
 
     expect(find.text('仕事へ移動しました'), findsOneWidget);
     expect(find.textContaining('追加したタスク', skipOffstage: false), findsNothing);

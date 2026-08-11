@@ -43,13 +43,22 @@ void main() {
     await tester.pump();
     await settleAfterTaskRegistration(tester);
 
+    await tester.ensureVisible(find.text('旧タイトル', skipOffstage: false));
     await tester.tap(find.text('旧タイトル', skipOffstage: false));
     await settleFlowDoUi(tester);
 
-    await tester.enterText(find.byType(TextField).last, '新タイトル');
+    expect(find.text('タスクを編集'), findsOneWidget);
+
+    final editField = find.descendant(
+      of: find.byType(BottomSheet),
+      matching: find.byType(TextField),
+    );
+    await tester.ensureVisible(editField);
+    await tester.tap(editField);
+    await tester.enterText(editField, '新タイトル');
     await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
-    await settleAfterTaskRegistration(tester);
+    await settleAfterDialogClosed(tester);
+    await settleFlowDoUi(tester);
 
     expect(find.text('新タイトル', skipOffstage: false), findsOneWidget);
     expect(find.text('旧タイトル', skipOffstage: false), findsNothing);

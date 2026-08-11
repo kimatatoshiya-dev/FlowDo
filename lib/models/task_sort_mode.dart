@@ -13,13 +13,22 @@ enum TaskSortMode {
   final String label;
 }
 
-/// 並び替えモードに応じてタスクを比較する
+/// 重要タスクを同一グループ内の最上位に並べる
+int compareFavoriteFirst(Task a, Task b) {
+  if (a.isFavorite == b.isFavorite) return 0;
+  return a.isFavorite ? -1 : 1;
+}
+
+/// 並び替えモードに応じてタスクを比較する（重要タスクは常に上位）
 int compareTasksBySortMode(
   Task a,
   Task b,
   TaskSortMode mode,
   List<CategoryItem> categories,
 ) {
+  final favoriteCompare = compareFavoriteFirst(a, b);
+  if (favoriteCompare != 0) return favoriteCompare;
+
   return switch (mode) {
     TaskSortMode.manual => a.id.compareTo(b.id),
     TaskSortMode.priority => _compareByPriority(a, b),
@@ -91,8 +100,6 @@ List<Task> sortTaskList(
   TaskSortMode mode,
   List<CategoryItem> categories,
 ) {
-  if (mode == TaskSortMode.manual) return List<Task>.from(tasks);
-
   final pending = tasks.where((t) => !t.isCompleted).toList()
     ..sort((a, b) => compareTasksBySortMode(a, b, mode, categories));
   final completed = tasks.where((t) => t.isCompleted).toList()

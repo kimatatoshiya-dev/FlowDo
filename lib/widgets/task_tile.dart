@@ -5,6 +5,7 @@ import '../models/task.dart';
 import '../models/task_priority.dart';
 import '../theme/app_theme.dart';
 import '../utils/date_formatter.dart';
+import 'inbox_promote_pending.dart';
 import 'registration_feedback.dart';
 
 /// タスク1行分のリストタイル
@@ -18,6 +19,7 @@ class TaskTile extends StatelessWidget {
     this.isLayoutHighlight = false,
     this.isLayoutAnimating = false,
     this.isRegistrationFeedback = false,
+    this.isInboxPromotePending = false,
     required this.onToggle,
     required this.onEdit,
     required this.onDelete,
@@ -42,6 +44,7 @@ class TaskTile extends StatelessWidget {
   final bool isLayoutHighlight;
   final bool isLayoutAnimating;
   final bool isRegistrationFeedback;
+  final bool isInboxPromotePending;
   final VoidCallback onToggle;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -60,6 +63,10 @@ class TaskTile extends StatelessWidget {
   final String? categoryChipTooltip;
 
   bool get _useCompletedVisual => isCompletedList || task.isCompleted;
+
+  bool get _isImportantTask => task.isFavorite && !_useCompletedVisual;
+
+  static const _importantAccent = Color(0xFFFF9500);
 
   EdgeInsets get _contentPadding => _useCompletedVisual
       ? const EdgeInsets.fromLTRB(10, 5, 4, 5)
@@ -162,7 +169,9 @@ class TaskTile extends StatelessWidget {
           offset: isLayoutAnimating ? const Offset(0, -0.06) : Offset.zero,
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOut,
-          child: RegistrationFeedbackWrapper(
+          child: InboxPromotePendingWrapper(
+            enabled: isInboxPromotePending,
+            child: RegistrationFeedbackWrapper(
             enabled: isRegistrationFeedback,
             child: AnimatedScale(
             scale: isRemoving || isLayoutAnimating ? 0.97 : 1.0,
@@ -184,7 +193,9 @@ class TaskTile extends StatelessWidget {
               Material(
                 color: _useCompletedVisual
                     ? colors.completedTaskSurface
-                    : Colors.transparent,
+                    : _isImportantTask
+                        ? _importantAccent.withValues(alpha: 0.08)
+                        : Colors.transparent,
                 borderRadius: isCompletedList
                     ? BorderRadius.circular(10)
                     : BorderRadius.zero,
@@ -197,7 +208,9 @@ class TaskTile extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: _useCompletedVisual
                               ? category.color.withValues(alpha: 0.45)
-                              : category.color,
+                              : _isImportantTask
+                                  ? _importantAccent
+                                  : category.color,
                           borderRadius: isCompletedList
                               ? const BorderRadius.horizontal(
                                   left: Radius.circular(10),
@@ -281,15 +294,15 @@ class TaskTile extends StatelessWidget {
                               ),
                               IconButton(
                                 tooltip: task.isFavorite
-                                    ? 'お気に入り解除'
-                                    : 'お気に入りに追加',
+                                    ? '重要タスクを解除'
+                                    : '重要タスクにする',
                                 icon: Icon(
                                   task.isFavorite
-                                      ? Icons.star
-                                      : Icons.star_border,
+                                      ? Icons.star_rounded
+                                      : Icons.star_border_rounded,
                                   size: _useCompletedVisual ? 20 : 24,
                                   color: task.isFavorite
-                                      ? const Color(0xFFFF9500).withValues(
+                                      ? _importantAccent.withValues(
                                           alpha: _useCompletedVisual ? 0.65 : 1,
                                         )
                                       : _useCompletedVisual
@@ -322,6 +335,7 @@ class TaskTile extends StatelessWidget {
           ),
               ],
             ),
+          ),
           ),
           ),
         ),
@@ -569,6 +583,41 @@ class _MetaTapChip extends StatelessWidget {
   }
 }
 
+/// Inbox（追加したタスク）エリアの案内バナー
+class InboxGuidanceBanner extends StatelessWidget {
+  const InboxGuidanceBanner({super.key});
+
+  static const message =
+      '👇 次はここでカテゴリー・期限・優先度を決めて、タスクリストへ移動しましょう。';
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final colors = Theme.of(context).extension<FlowDoColors>()!;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: colorScheme.primary.withValues(alpha: 0.22),
+        ),
+      ),
+      child: Text(
+        message,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: colors.secondaryLabel,
+              height: 1.45,
+              fontWeight: FontWeight.w500,
+            ),
+      ),
+    );
+  }
+}
+
 /// iOS 風のグループ化リスト
 class GroupedTaskList extends StatelessWidget {
   const GroupedTaskList({
@@ -581,6 +630,7 @@ class GroupedTaskList extends StatelessWidget {
     this.isLayoutHighlight,
     this.isLayoutAnimating,
     this.isRegistrationFeedback,
+    this.isInboxPromotePending,
     required this.onToggle,
     required this.onEdit,
     required this.onDelete,
@@ -594,6 +644,7 @@ class GroupedTaskList extends StatelessWidget {
     this.openEditOnRowTap = false,
     this.isCompletedList = false,
     this.isInboxList = false,
+    this.showInboxGuidance = false,
     this.onPromoteTask,
   });
 
@@ -605,6 +656,7 @@ class GroupedTaskList extends StatelessWidget {
   final bool Function(Task task)? isLayoutHighlight;
   final bool Function(Task task)? isLayoutAnimating;
   final bool Function(Task task)? isRegistrationFeedback;
+  final bool Function(Task task)? isInboxPromotePending;
   final void Function(Task task) onToggle;
   final void Function(Task task) onEdit;
   final void Function(Task task) onDelete;
@@ -618,6 +670,7 @@ class GroupedTaskList extends StatelessWidget {
   final bool openEditOnRowTap;
   final bool isCompletedList;
   final bool isInboxList;
+  final bool showInboxGuidance;
   final Future<void> Function(Task task)? onPromoteTask;
 
   @override
@@ -642,6 +695,7 @@ class GroupedTaskList extends StatelessWidget {
                   ),
             ),
           ),
+          if (showInboxGuidance) const InboxGuidanceBanner(),
           if (isCompletedList)
             Column(
               children: [
@@ -668,6 +722,8 @@ class GroupedTaskList extends StatelessWidget {
                             isLayoutAnimating?.call(tasks[i]) ?? false,
                         isRegistrationFeedback:
                             isRegistrationFeedback?.call(tasks[i]) ?? false,
+                        isInboxPromotePending:
+                            isInboxPromotePending?.call(tasks[i]) ?? false,
                         showCompletionToggle: showCompletionToggle,
                         showMetaChips: showMetaChips,
                         openEditOnRowTap: openEditOnRowTap,
@@ -714,6 +770,8 @@ class GroupedTaskList extends StatelessWidget {
                             isLayoutAnimating?.call(tasks[i]) ?? false,
                         isRegistrationFeedback:
                             isRegistrationFeedback?.call(tasks[i]) ?? false,
+                        isInboxPromotePending:
+                            isInboxPromotePending?.call(tasks[i]) ?? false,
                         showCompletionToggle: showCompletionToggle,
                         showMetaChips: showMetaChips,
                         openEditOnRowTap: openEditOnRowTap,

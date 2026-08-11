@@ -8,7 +8,7 @@ class CategoryBar extends StatefulWidget {
   const CategoryBar({
     super.key,
     required this.categories,
-    required this.selectedId,
+    required this.selectedIds,
     required this.onSelected,
     required this.onAdd,
     required this.onRename,
@@ -16,7 +16,7 @@ class CategoryBar extends StatefulWidget {
   });
 
   final List<CategoryItem> categories;
-  final String? selectedId;
+  final Set<String> selectedIds;
   final ValueChanged<String?> onSelected;
   final ValueChanged<String> onAdd;
   final ValueChanged<CategoryItem> onRename;
@@ -112,7 +112,7 @@ class _CategoryBarState extends State<CategoryBar> {
           children: [
             _CategoryChip(
               label: 'すべて',
-              selected: widget.selectedId == null,
+              selected: widget.selectedIds.isEmpty,
               onTap: () => widget.onSelected(null),
             ),
             const SizedBox(width: 8),
@@ -124,12 +124,8 @@ class _CategoryBarState extends State<CategoryBar> {
                 child: _CategoryChip(
                   label: category.name,
                   color: category.color,
-                  selected: widget.selectedId == category.id,
-                  onTap: () {
-                    widget.onSelected(
-                      widget.selectedId == category.id ? null : category.id,
-                    );
-                  },
+                  selected: widget.selectedIds.contains(category.id),
+                  onTap: () => widget.onSelected(category.id),
                   onLongPress: category.isSystem
                       ? null
                       : () => _showCategoryActions(category),

@@ -24,6 +24,9 @@ class AppStorage {
   static const _feedbackPreferencesKey = 'flowdo_feedback_preferences';
   static const _completedTaskRetentionKey = 'flowdo_completed_task_retention';
   static const _firstLaunchLoggedKey = 'flowdo_analytics_first_launch_logged';
+  static const _inputGuidanceSeenKey = 'flowdo_input_guidance_seen';
+  static const _inboxGuidanceSeenKey = 'flowdo_inbox_guidance_seen';
+  static const _favoriteGuidanceSeenKey = 'flowdo_favorite_guidance_seen';
   static const _maxPrefsAttempts = 8;
   static const _prefsRetryBaseDelay = Duration(milliseconds: 150);
 
@@ -312,6 +315,78 @@ class AppStorage {
       await prefs.setString(_completedTaskRetentionKey, retention.storageValue);
     } catch (error, stack) {
       debugPrint('Failed to save completed task retention: $error');
+      debugPrint(stack.toString());
+    }
+  }
+
+  /// 入力エリアの初回ガイドを表示すべきか
+  static Future<bool> shouldShowInputGuidance() async {
+    try {
+      final prefs = await _ensurePrefs();
+      if (prefs == null) return true;
+      return !(prefs.getBool(_inputGuidanceSeenKey) ?? false);
+    } catch (error, stack) {
+      debugPrint('Failed to read input guidance flag: $error');
+      debugPrint(stack.toString());
+      return true;
+    }
+  }
+
+  static Future<void> markInputGuidanceSeen() async {
+    try {
+      final prefs = await _ensurePrefs();
+      if (prefs == null) return;
+      await prefs.setBool(_inputGuidanceSeenKey, true);
+    } catch (error, stack) {
+      debugPrint('Failed to save input guidance flag: $error');
+      debugPrint(stack.toString());
+    }
+  }
+
+  /// Inbox（追加したタスク）エリアの初回ガイドを表示すべきか
+  static Future<bool> shouldShowInboxGuidance() async {
+    try {
+      final prefs = await _ensurePrefs();
+      if (prefs == null) return true;
+      return !(prefs.getBool(_inboxGuidanceSeenKey) ?? false);
+    } catch (error, stack) {
+      debugPrint('Failed to read inbox guidance flag: $error');
+      debugPrint(stack.toString());
+      return true;
+    }
+  }
+
+  static Future<void> markInboxGuidanceSeen() async {
+    try {
+      final prefs = await _ensurePrefs();
+      if (prefs == null) return;
+      await prefs.setBool(_inboxGuidanceSeenKey, true);
+    } catch (error, stack) {
+      debugPrint('Failed to save inbox guidance flag: $error');
+      debugPrint(stack.toString());
+    }
+  }
+
+  /// 重要タスク（⭐）ガイドを表示すべきか
+  static Future<bool> shouldShowFavoriteGuidance() async {
+    try {
+      final prefs = await _ensurePrefs();
+      if (prefs == null) return true;
+      return !(prefs.getBool(_favoriteGuidanceSeenKey) ?? false);
+    } catch (error, stack) {
+      debugPrint('Failed to read favorite guidance flag: $error');
+      debugPrint(stack.toString());
+      return true;
+    }
+  }
+
+  static Future<void> markFavoriteGuidanceSeen() async {
+    try {
+      final prefs = await _ensurePrefs();
+      if (prefs == null) return;
+      await prefs.setBool(_favoriteGuidanceSeenKey, true);
+    } catch (error, stack) {
+      debugPrint('Failed to save favorite guidance flag: $error');
       debugPrint(stack.toString());
     }
   }

@@ -11,17 +11,19 @@ class TaskInputBar extends StatefulWidget {
     required this.controller,
     required this.onSubmit,
     this.onFocusChanged,
+    this.showGuidance = false,
   });
 
   final TextEditingController controller;
   final VoidCallback onSubmit;
   final ValueChanged<bool>? onFocusChanged;
+  final bool showGuidance;
 
   @override
-  State<TaskInputBar> createState() => _TaskInputBarState();
+  State<TaskInputBar> createState() => TaskInputBarState();
 }
 
-class _TaskInputBarState extends State<TaskInputBar> {
+class TaskInputBarState extends State<TaskInputBar> {
   static const _exampleText = '例）\n牛乳\nジムへ19時に行く\n上司へ電話';
 
   late final FocusNode _focusNode;
@@ -44,6 +46,8 @@ class _TaskInputBarState extends State<TaskInputBar> {
     widget.controller.removeListener(_rebuild);
     super.dispose();
   }
+
+  void unfocus() => _focusNode.unfocus();
 
   void _rebuild() => setState(() {});
 
@@ -113,9 +117,12 @@ class _TaskInputBarState extends State<TaskInputBar> {
                 ),
           ),
           const SizedBox(height: 16),
-          FlowDoFlowCanvas(
+          Padding(
+            padding: EdgeInsets.only(top: widget.showGuidance ? 6 : 0),
+            child: FlowDoFlowCanvas(
             isFocused: isFocused,
             isDark: isDark,
+            showGuidance: widget.showGuidance,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
               child: Column(
@@ -201,6 +208,7 @@ class _TaskInputBarState extends State<TaskInputBar> {
                 ],
               ),
             ),
+          ),
           ),
         ],
       ),
