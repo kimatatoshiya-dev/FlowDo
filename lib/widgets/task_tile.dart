@@ -64,9 +64,9 @@ class TaskTile extends StatelessWidget {
 
   bool get _useCompletedVisual => isCompletedList || task.isCompleted;
 
-  bool get _isImportantTask => task.isFavorite && !_useCompletedVisual;
+  bool get _isPinnedTask => task.isFavorite && !_useCompletedVisual;
 
-  static const _importantAccent = Color(0xFFFF9500);
+  static const _pinAccent = Color(0xFFFF9500);
 
   EdgeInsets get _contentPadding => _useCompletedVisual
       ? const EdgeInsets.fromLTRB(10, 5, 4, 5)
@@ -193,8 +193,8 @@ class TaskTile extends StatelessWidget {
               Material(
                 color: _useCompletedVisual
                     ? colors.completedTaskSurface
-                    : _isImportantTask
-                        ? _importantAccent.withValues(alpha: 0.08)
+                    : _isPinnedTask
+                        ? _pinAccent.withValues(alpha: 0.08)
                         : Colors.transparent,
                 borderRadius: isCompletedList
                     ? BorderRadius.circular(10)
@@ -208,8 +208,8 @@ class TaskTile extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: _useCompletedVisual
                               ? category.color.withValues(alpha: 0.45)
-                              : _isImportantTask
-                                  ? _importantAccent
+                              : _isPinnedTask
+                                  ? _pinAccent
                                   : category.color,
                           borderRadius: isCompletedList
                               ? const BorderRadius.horizontal(
@@ -294,20 +294,23 @@ class TaskTile extends StatelessWidget {
                               ),
                               IconButton(
                                 tooltip: task.isFavorite
-                                    ? '重要タスクを解除'
-                                    : '重要タスクにする',
-                                icon: Icon(
-                                  task.isFavorite
-                                      ? Icons.star_rounded
-                                      : Icons.star_border_rounded,
-                                  size: _useCompletedVisual ? 20 : 24,
-                                  color: task.isFavorite
-                                      ? _importantAccent.withValues(
-                                          alpha: _useCompletedVisual ? 0.65 : 1,
-                                        )
-                                      : _useCompletedVisual
-                                          ? colors.secondaryLabel
-                                          : null,
+                                    ? '固定を解除'
+                                    : '最上位へ固定',
+                                icon: Text(
+                                  '📌',
+                                  style: TextStyle(
+                                    fontSize: _useCompletedVisual ? 18 : 20,
+                                    height: 1,
+                                    color: task.isFavorite
+                                        ? _pinAccent.withValues(
+                                            alpha:
+                                                _useCompletedVisual ? 0.65 : 1,
+                                          )
+                                        : _useCompletedVisual
+                                            ? colors.secondaryLabel
+                                            : colors.secondaryLabel
+                                                .withValues(alpha: 0.55),
+                                  ),
                                 ),
                                 onPressed: onFavoriteTap,
                                 visualDensity: VisualDensity.compact,

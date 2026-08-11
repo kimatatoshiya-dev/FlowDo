@@ -619,7 +619,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         ..hideCurrentSnackBar()
         ..showSnackBar(
           const SnackBar(
-            content: Text('⭐ をタップすると「重要タスク」としてマークできます'),
+            content: Text('📌 をタップするとタスクを最上位へ固定できます'),
             duration: Duration(seconds: 3),
             behavior: SnackBarBehavior.floating,
           ),
@@ -628,13 +628,13 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     });
   }
 
-  void _showFavoriteFeedback({required bool added}) {
+  void _showPinFeedback({required bool pinned}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(added ? '重要タスクに追加しました' : '重要タスクを解除しました'),
+          content: Text(pinned ? '最重要に固定しました' : '固定を解除しました'),
           duration: const Duration(seconds: 2),
           behavior: SnackBarBehavior.floating,
         ),
@@ -777,6 +777,11 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     );
 
     final existingById = {for (final task in _tasks) task.id: task};
+    final remoteIds = {for (final task in retainedTasks) task.id};
+    // updateTask の古いスナップショット等でリモートが欠ける場合、ローカル行を維持する
+    final localOnlyTasks = _tasks
+        .where((task) => !remoteIds.contains(task.id))
+        .toList(growable: false);
 
     final wasLoading = _isLoading;
 
@@ -789,6 +794,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
               remote: remote,
               existing: existingById[remote.id],
             ),
+          ...localOnlyTasks,
         ]);
       _isLoading = false;
     });
@@ -1340,47 +1346,45 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     await _scheduleInboxPromote(task);
   }
 
-  Future<void> _toggleFavorite(Task task) async {
-    debugPrint(
-      '[FlowDoFavorite] _toggleFavorite start taskId=${task.id} '
-      'isFavorite=${task.isFavorite}',
-    );
+  Future<void> _togglePin(Task task) async {
     if (!mounted) return;
 
     final index = _tasks.indexWhere((element) => element.id == task.id);
     if (index < 0) return;
 
     final target = _tasks[index];
-    final updatedFavorite = !target.isFavorite;
+    final pinned = !target.isFavorite;
+    _pendingFavoriteByTaskId[target.id] = pinned;
 
-    setState(() {
-      target.isFavorite = updatedFavorite;
-    });
-    _pendingFavoriteByTaskId[target.id] = updatedFavorite;
-    _showFavoriteFeedback(added: updatedFavorite);
     if (_showFavoriteGuidance) {
       _showFavoriteGuidance = false;
       unawaited(AppStorage.markFavoriteGuidanceSeen());
     }
 
     try {
-      debugPrint(
-        '[FlowDoFavorite] updateTask before taskId=${target.id} '
-        'isFavorite=${target.isFavorite} pending=$_pendingFavoriteByTaskId',
-      );
-      await widget.taskRepository.updateTask(target);
-      if (!mounted) return;
-      if (target.isInbox) {
-        setState(() {});
-      } else {
-        _scheduleDeferredLayout(taskId: target.id, sortMode: _sortMode);
-      }
+      await _updateTasks(() {
+        target.isFavorite = pinned;
+        _tasks.removeAt(index);
+        _tasks.insert(
+          pinReorderIndex(
+            tasks: _tasks,
+            task: target,
+            sortMode: _sortMode,
+            categories: _categories,
+          ),
+          target,
+        );
+      });
+      _pendingFavoriteByTaskId.remove(target.id);
+      if (mounted) _showPinFeedback(pinned: pinned);
     } catch (error, stack) {
-      debugPrint('Failed to update favorite: $error');
+      debugPrint('Failed to update pin: $error');
       debugPrint(stack.toString());
       if (!mounted) return;
+      final revertIndex = _tasks.indexWhere((element) => element.id == task.id);
+      if (revertIndex < 0) return;
       setState(() {
-        target.isFavorite = !updatedFavorite;
+        _tasks[revertIndex].isFavorite = !pinned;
       });
       _pendingFavoriteByTaskId.remove(target.id);
     }
@@ -1621,7 +1625,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                         onCategoryTap: _showInboxCategoryPicker,
                         onPriorityTap: _cyclePriority,
                         onDueDateTap: _pickDueDate,
-                        onFavoriteTap: _toggleFavorite,
+                        onFavoriteTap: _togglePin,
                         isInboxList: true,
                         showInboxGuidance: _showInboxGuidance,
                         onPromoteTask: _promoteInboxTaskWithCurrentCategory,
@@ -1716,7 +1720,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                           onCategoryTap: _cycleCategory,
                           onPriorityTap: _cyclePriority,
                           onDueDateTap: _pickDueDate,
-                          onFavoriteTap: _toggleFavorite,
+                          onFavoriteTap: _togglePin,
                         ),
                       ),
                     if (completedTasks.isNotEmpty)
@@ -1737,7 +1741,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                           onCategoryTap: _cycleCategory,
                           onPriorityTap: _cyclePriority,
                           onDueDateTap: _pickDueDate,
-                          onFavoriteTap: _toggleFavorite,
+                          onFavoriteTap: _togglePin,
                         ),
                       ),
                   ],

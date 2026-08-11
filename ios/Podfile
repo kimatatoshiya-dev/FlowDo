@@ -1,5 +1,9 @@
 platform :ios, '15.0'
 
+# Flutter 公式の CocoaPods 構成（SPM 混在を避ける）。
+# 初回セットアップ: flutter config --no-enable-swift-package-manager
+# ビルド手順: flutter pub get → pod install
+
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
 project 'Runner', {
@@ -27,7 +31,11 @@ flutter_ios_podfile_setup
 
 target 'Runner' do
   use_frameworks!
+
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
 end
 
 post_install do |installer|

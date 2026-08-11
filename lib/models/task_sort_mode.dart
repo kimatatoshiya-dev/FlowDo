@@ -13,13 +13,66 @@ enum TaskSortMode {
   final String label;
 }
 
-/// 重要タスクを同一グループ内の最上位に並べる
+/// 固定（📌）タスクを同一グループ内の最上位に並べる
 int compareFavoriteFirst(Task a, Task b) {
   if (a.isFavorite == b.isFavorite) return 0;
   return a.isFavorite ? -1 : 1;
 }
 
-/// 並び替えモードに応じてタスクを比較する（重要タスクは常に上位）
+/// 固定 ON/OFF 後に [_tasks] 全体へ挿入するインデックス
+int pinReorderIndex({
+  required List<Task> tasks,
+  required Task task,
+  required TaskSortMode sortMode,
+  required List<CategoryItem> categories,
+}) {
+  if (task.isInbox) {
+    if (task.isFavorite) {
+      for (var i = 0; i < tasks.length; i++) {
+        final t = tasks[i];
+        if (t.isInbox && !t.isCompleted) return i;
+      }
+      return tasks.length;
+    }
+
+    for (var i = 0; i < tasks.length; i++) {
+      final t = tasks[i];
+      if (!t.isInbox || t.isCompleted) continue;
+      if (t.isFavorite) continue;
+      if (task.createdAt.isAfter(t.createdAt)) return i;
+    }
+    for (var i = tasks.length - 1; i >= 0; i--) {
+      if (tasks[i].isInbox && !tasks[i].isCompleted) return i + 1;
+    }
+    return tasks.length;
+  }
+
+  if (task.isFavorite) {
+    for (var i = 0; i < tasks.length; i++) {
+      final t = tasks[i];
+      if (!t.isCompleted && !t.isInbox) return i;
+    }
+    return tasks.length;
+  }
+
+  for (var i = 0; i < tasks.length; i++) {
+    final t = tasks[i];
+    if (t.isCompleted || t.isInbox) continue;
+    if (t.isFavorite) continue;
+    if (compareTasksBySortMode(task, t, sortMode, categories) < 0) {
+      return i;
+    }
+  }
+
+  for (var i = tasks.length - 1; i >= 0; i--) {
+    if (!tasks[i].isCompleted && !tasks[i].isInbox) {
+      return i + 1;
+    }
+  }
+  return tasks.length;
+}
+
+/// 並び替えモードに応じてタスクを比較する（固定タスクは常に上位）
 int compareTasksBySortMode(
   Task a,
   Task b,

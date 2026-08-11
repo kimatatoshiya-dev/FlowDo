@@ -367,7 +367,7 @@ class AppStorage {
     }
   }
 
-  /// 重要タスク（⭐）ガイドを表示すべきか
+  /// 固定（📌）ガイドを表示すべきか
   static Future<bool> shouldShowFavoriteGuidance() async {
     try {
       final prefs = await _ensurePrefs();

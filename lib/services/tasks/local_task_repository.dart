@@ -49,7 +49,16 @@ class LocalTaskRepository implements TaskRepository {
     if (index == -1) {
       tasks.insert(0, task);
     } else {
-      tasks[index] = task;
+      final stored = tasks[index];
+      stored
+        ..title = task.title
+        ..isCompleted = task.isCompleted
+        ..isInbox = task.isInbox
+        ..categoryId = task.categoryId
+        ..priorityStars = task.priorityStars
+        ..dueDate = task.dueDate
+        ..completedAt = task.completedAt
+        ..isFavorite = task.isFavorite;
     }
     Task.syncNextId(tasks);
     await _persist(tasks);

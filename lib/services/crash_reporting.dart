@@ -38,21 +38,22 @@ void installStartupErrorHandlers() {
 Future<AnalyticsService> initializeAppMonitoring() async {
   installStartupErrorHandlers();
 
+  // 無料版 v1（kFirebaseEnabled=false）ではネイティブ Firebase を起動しない。
+  // iOS 起動ワークアラウンドとは無関係。有料版で Firebase を有効化した際もこの分岐は維持する。
+  if (!kFirebaseEnabled) {
+    startupTrace(
+      'initializeAppMonitoring() firebase disabled',
+      'skipping Firebase.initializeApp',
+    );
+    return const NoOpAnalyticsService();
+  }
+
   try {
     await _ensureFirebaseCoreReady();
   } catch (error, stack) {
     startupTrace('Firebase core setup FAILED', error);
     debugPrint('Firebase core setup failed: $error');
     debugPrint(stack.toString());
-    return const NoOpAnalyticsService();
-  }
-
-  if (!kFirebaseEnabled) {
-    startupTrace(
-      'initializeAppMonitoring() firebase disabled',
-      'apps=${Firebase.apps.length}',
-    );
-    await _disableFirebaseTelemetry();
     return const NoOpAnalyticsService();
   }
 

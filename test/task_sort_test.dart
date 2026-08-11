@@ -120,7 +120,7 @@ void main() {
   });
 
   group('sortTaskList', () {
-    test('手動順は重要タスクだけ最上位へ', () {
+    test('手動順は固定タスクだけ最上位へ', () {
       final tasks = [
         Task(id: 3, title: 'c', priorityStars: TaskPriorityStars.max),
         Task(id: 1, title: 'a', isFavorite: true),
@@ -132,7 +132,7 @@ void main() {
       expect(sorted.map((t) => t.id).toList(), [1, 2, 3]);
     });
 
-    test('重要タスクは優先度順でも最上位', () {
+    test('固定タスクは優先度順でも最上位', () {
       final normalHigh = Task(id: 1, title: 'normal', priorityStars: 5);
       final importantLow = Task(
         id: 2,
@@ -195,6 +195,39 @@ void main() {
 
       final completed = [older, newer]..sort(compareCompletedTasks);
       expect(completed.map((t) => t.id).toList(), [2, 1]);
+    });
+  });
+
+  group('pinReorderIndex', () {
+    test('固定 ON で先頭へ', () {
+      final tasks = [
+        Task(id: 1, title: 'a'),
+        Task(id: 3, title: 'c'),
+      ];
+      final pinned = Task(id: 3, title: 'c', isFavorite: true);
+
+      final index = pinReorderIndex(
+        tasks: tasks,
+        task: pinned,
+        sortMode: TaskSortMode.priority,
+        categories: categories,
+      );
+
+      expect(index, 0);
+    });
+
+    test('固定 OFF でもリストから消えない位置へ', () {
+      final unpinned = Task(id: 1, title: 'pinned', priorityStars: 5);
+      final remaining = [Task(id: 2, title: 'normal', priorityStars: 1)];
+
+      final index = pinReorderIndex(
+        tasks: remaining,
+        task: unpinned,
+        sortMode: TaskSortMode.priority,
+        categories: categories,
+      );
+
+      expect(index, 1);
     });
   });
 }
