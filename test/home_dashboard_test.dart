@@ -76,6 +76,7 @@ void main() {
             calendarData: sampleCalendarData(),
             categoryCounts: const [],
             onCalendarDayTap: (_) {},
+            onOpenTodayFocusSheet: () {},
           ),
         ),
       ),
@@ -89,7 +90,31 @@ void main() {
     expect(find.text('日'), findsOneWidget);
     expect(find.text('土'), findsOneWidget);
     expect(find.text('今日やること'), findsNothing);
-    expect(find.text('▶ 重要タスク一覧'), findsNothing);
+    expect(find.text('▶ 重要タスク一覧'), findsOneWidget);
+  });
+
+  testWidgets('重要タスク一覧ボタンでコールバックが呼ばれる', (WidgetTester tester) async {
+    var opened = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: HomeDashboard(
+            calendarData: sampleCalendarData(),
+            categoryCounts: const [],
+            onCalendarDayTap: (_) {},
+            onOpenTodayFocusSheet: () => opened = true,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('▶ 重要タスク一覧'));
+    await tester.pump();
+
+    expect(opened, isTrue);
   });
 
   testWidgets('日付タップでコールバックが呼ばれる', (WidgetTester tester) async {
@@ -103,6 +128,7 @@ void main() {
             calendarData: sampleCalendarData(),
             categoryCounts: const [],
             onCalendarDayTap: (day) => tappedDay = day,
+            onOpenTodayFocusSheet: () {},
           ),
         ),
       ),
@@ -165,6 +191,7 @@ void main() {
               ),
             ],
             onCalendarDayTap: (_) {},
+            onOpenTodayFocusSheet: () {},
           ),
         ),
       ),

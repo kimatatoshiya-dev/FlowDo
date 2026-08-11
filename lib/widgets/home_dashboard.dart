@@ -21,11 +21,13 @@ class HomeDashboard extends StatefulWidget {
     super.key,
     required this.calendarData,
     required this.onCalendarDayTap,
+    required this.onOpenTodayFocusSheet,
     required this.categoryCounts,
   });
 
   final FlowDoCalendarMonthData calendarData;
   final ValueChanged<DateTime> onCalendarDayTap;
+  final VoidCallback onOpenTodayFocusSheet;
   final List<CategoryIncompleteCount> categoryCounts;
 
   @override
@@ -36,7 +38,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
-  static const _calendarPageHeight = 332.0;
+  static const _calendarPageHeight = 360.0;
 
   @override
   void dispose() {
@@ -61,6 +63,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 _FlowDoCalendarPage(
                   calendarData: widget.calendarData,
                   onDayTap: widget.onCalendarDayTap,
+                  onOpenTodayFocusSheet: widget.onOpenTodayFocusSheet,
                 ),
                 _CategoryAnalysisPage(categoryCounts: widget.categoryCounts),
               ],
@@ -95,10 +98,12 @@ class _FlowDoCalendarPage extends StatelessWidget {
   const _FlowDoCalendarPage({
     required this.calendarData,
     required this.onDayTap,
+    required this.onOpenTodayFocusSheet,
   });
 
   final FlowDoCalendarMonthData calendarData;
   final ValueChanged<DateTime> onDayTap;
+  final VoidCallback onOpenTodayFocusSheet;
 
   static const _weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -182,6 +187,24 @@ class _FlowDoCalendarPage extends StatelessWidget {
                   },
                 );
               },
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: onOpenTodayFocusSheet,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                '▶ 重要タスク一覧',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
             ),
           ),
         ],

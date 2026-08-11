@@ -36,6 +36,7 @@ import 'widgets/category_name_dialog.dart';
 import 'widgets/calendar_day_task_sheet.dart';
 import 'widgets/home_dashboard.dart';
 import 'widgets/inbox_category_picker_sheet.dart';
+import 'widgets/today_focus_task_sheet.dart';
 import 'widgets/task_add_sheet.dart';
 import 'widgets/task_input_bar.dart';
 import 'widgets/task_tile.dart';
@@ -352,7 +353,6 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   List<CategoryItem> _categories = CategoryItem.defaults();
   String? _lastRegistrationCategoryId;
   final TextEditingController _inputController = TextEditingController();
-  final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _inputSectionKey = GlobalKey();
   final GlobalKey _inboxSectionKey = GlobalKey();
@@ -362,7 +362,6 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   bool _showInputGuidance = false;
   bool _showInboxGuidance = false;
   bool _showFavoriteGuidance = false;
-  String _searchQuery = '';
   final Set<String> _categoryFilterIds = {};
   final Set<String> _inboxSelectedCategoryIds = {};
   TaskSortMode _sortMode = TaskSortMode.priority;
@@ -424,9 +423,6 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         startupTrace('FlowDoHomePage._loadMetadata done');
       }),
     );
-    _searchController.addListener(() {
-      setState(() => _searchQuery = _searchController.text.trim());
-    });
   }
 
   @override
@@ -456,7 +452,6 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     }
     _completionTimers.clear();
     _inputController.dispose();
-    _searchController.dispose();
     _todayFocusSheetRevision.dispose();
     super.dispose();
   }
@@ -501,6 +496,36 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
 
   void _refreshTodayFocusSheet() {
     _todayFocusSheetRevision.value++;
+  }
+
+  Future<void> _showTodayFocusTaskSheet() async {
+    _refreshTodayFocusSheet();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => ValueListenableBuilder<int>(
+        valueListenable: _todayFocusSheetRevision,
+        builder: (context, _, __) => TodayFocusTaskSheet(
+          sections: _todayFocusSections,
+          onToggleTask: (taskId) async {
+            final index = _tasks.indexWhere((task) => task.id == taskId);
+            if (index < 0) return;
+            final task = _tasks[index];
+            if (!task.isCompleted && !_completingTaskIds.contains(task.id)) {
+              unawaited(widget.feedbackService.playLightHaptic());
+            }
+            await _toggleTask(task, quietCompletionFeedback: true);
+          },
+          isRemoving: (taskId) => _removingTaskIds.contains(taskId),
+          showCompletedStyle: (taskId) {
+            final index = _tasks.indexWhere((task) => task.id == taskId);
+            if (index < 0) return false;
+            return _showsCompletedStyle(_tasks[index]);
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _showCalendarDaySheet(DateTime day) async {
@@ -1199,7 +1224,6 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   List<Task> _recentlyAddedTasks() {
     final list = _tasks.where((task) {
       if (!task.isInbox || task.isCompleted) return false;
-      if (!task.matchesQuery(_searchQuery)) return false;
       return true;
     }).toList();
 
@@ -1220,7 +1244,6 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
           !_deferredFilterTaskIds.contains(task.id)) {
         return false;
       }
-      if (!task.matchesQuery(_searchQuery)) return false;
       return true;
     }).toList();
 
@@ -1772,7 +1795,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     final recentTasks = _recentlyAddedTasks();
     final pendingTasks = _filteredTasks(completed: false);
     final completedTasks = _filteredTasks(completed: true);
-    final hasFilter = _searchQuery.isNotEmpty || _categoryFilterIds.isNotEmpty;
+    final hasFilter = _categoryFilterIds.isNotEmpty;
     final hasVisibleTasks =
         recentTasks.isNotEmpty ||
         pendingTasks.isNotEmpty ||
@@ -1946,26 +1969,8 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                     child: HomeDashboard(
                       calendarData: buildFlowDoCalendarMonth(tasks: _tasks),
                       onCalendarDayTap: _showCalendarDaySheet,
+                      onOpenTodayFocusSheet: _showTodayFocusTaskSheet,
                       categoryCounts: _categoryIncompleteCounts,
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                      child: TextField(
-                        key: const ValueKey('task_search_field'),
-                        controller: _searchController,
-                        decoration: InputDecoration(
-                          hintText: 'タスクを検索',
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _searchQuery.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.close),
-                                  onPressed: _searchController.clear,
-                                )
-                              : null,
-                        ),
-                      ),
                     ),
                   ),
                   if (!_isLoading)
