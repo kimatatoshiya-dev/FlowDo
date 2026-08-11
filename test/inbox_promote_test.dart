@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:flowdo/widgets/category_bar.dart';
+
 import 'flowdo_test_helpers.dart';
 
 void main() {
@@ -27,15 +29,15 @@ void main() {
     );
   }
 
-  testWidgets('Inboxタスクのカテゴリタップでリストへ移動できる', (WidgetTester tester) async {
+  testWidgets('Inboxタスクのカテゴリ変更後もInboxに残る', (WidgetTester tester) async {
     await pumpFlowDoApp(tester);
-    await registerInboxTask(tester, '移動テスト');
+    await registerInboxTask(tester, '設定テスト');
 
     expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
-    expectManualOrganizeButtonVisible();
+    expectManualOrganizeButtonVisible(inboxCount: 1);
 
     final categoryChip = find.descendant(
-      of: inboxTaskTile('移動テスト'),
+      of: inboxTaskTile('設定テスト'),
       matching: find.text('仕事'),
     );
     await tester.ensureVisible(categoryChip);
@@ -44,38 +46,98 @@ void main() {
     await tester.pump();
     await settleFlowDoUi(tester);
 
-    expect(find.text('どこに置きますか？'), findsOneWidget);
+    expect(find.text('グループを選択'), findsOneWidget);
 
     await tester.tap(
       find.descendant(
         of: find.byType(BottomSheet),
-        matching: find.text('仕事'),
-      ).last,
+        matching: find.text('未分類'),
+      ),
     );
     await tester.pump();
     await settleAfterDialogClosed(tester);
 
-    expect(find.text('リストへ移動中…'), findsOneWidget);
+    expect(find.text('未分類に設定しました'), findsOneWidget);
+    expect(find.text('リストへ移動中…'), findsNothing);
     expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
 
-    await settleInboxPromoteDelay(tester);
+    await drainFlowDoTimers(tester);
+  });
 
-    expect(find.text('仕事へ移動しました'), findsOneWidget);
-    expect(find.textContaining('追加したタスク', skipOffstage: false), findsNothing);
+  testWidgets('Inboxで📌を設定してもInboxに残る', (WidgetTester tester) async {
+    await pumpFlowDoApp(tester);
+    await registerInboxTask(tester, '重要テスト');
 
-    final taskFinder = find.text('移動テスト', skipOffstage: false);
+    expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
+
+    final pinButton = find.descendant(
+      of: inboxTaskTile('重要テスト'),
+      matching: find.byTooltip('最上位へ固定'),
+    );
+    await tester.ensureVisible(pinButton);
+    await settleFlowDoUi(tester);
+    await tester.tap(pinButton);
+    await tester.pump();
+    await settleFlowDoUi(tester);
+
+    expect(find.text('📌 重要に設定しました'), findsOneWidget);
+    expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
+    expect(find.text('1件を整理する'), findsOneWidget);
+
+    await drainFlowDoTimers(tester);
+  });
+
+  testWidgets('Inboxのグループバーで選択したグループがタスクに反映される',
+      (WidgetTester tester) async {
+    await pumpFlowDoApp(tester);
+    await registerInboxTask(tester, 'グループ反映');
+
+    await revealCategoryBar(tester);
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('inbox_category_bar')),
+        matching: find.text('仕事'),
+      ),
+    );
+    await tester.pump();
+    await settleFlowDoUi(tester);
+
+    expect(find.text('仕事に設定しました'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: inboxTaskTile('グループ反映'),
+        matching: find.text('仕事'),
+      ),
+      findsOneWidget,
+    );
+
+    await drainFlowDoTimers(tester);
+  });
+
+  testWidgets('整理するボタンでInboxタスクが未完了リストへ移動する',
+      (WidgetTester tester) async {
+    await pumpFlowDoApp(tester);
+    await registerInboxTask(tester, '整理テスト');
+
+    await organizeInboxTasks(tester, count: 1);
+
+    expect(find.text('1件をタスクリストへ移動しました'), findsOneWidget);
+    expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
+    expect(find.text('整理する'), findsOneWidget);
+
+    final taskFinder = find.text('整理テスト', skipOffstage: false);
     await tester.ensureVisible(taskFinder);
     expect(taskFinder, findsOneWidget);
 
     await drainFlowDoTimers(tester);
   });
 
-  testWidgets('Inboxタスクを右スワイプすると現在のカテゴリへ移動できる',
+  testWidgets('Inboxタスクの右スワイプでは未完了リストへ移動しない',
       (WidgetTester tester) async {
     await pumpFlowDoApp(tester);
-    await registerInboxTask(tester, 'スワイプ移動');
+    await registerInboxTask(tester, 'スワイプテスト');
 
-    final tile = inboxTaskTile('スワイプ移動');
+    final tile = inboxTaskTile('スワイプテスト');
     await tester.ensureVisible(tile);
     await settleFlowDoUi(tester);
     final topLeft = tester.getTopLeft(tile);
@@ -87,14 +149,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     }
 
-    expect(find.text('リストへ移動中…'), findsOneWidget);
-    await settleInboxPromoteDelay(tester);
-
-    expect(find.text('仕事へ移動しました'), findsOneWidget);
-    expect(find.textContaining('追加したタスク', skipOffstage: false), findsNothing);
-    final taskFinder = find.text('スワイプ移動', skipOffstage: false);
-    await tester.ensureVisible(taskFinder);
-    expect(taskFinder, findsOneWidget);
+    expect(find.text('リストへ移動中…'), findsNothing);
+    expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
 
     await drainFlowDoTimers(tester);
   });

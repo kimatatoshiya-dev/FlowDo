@@ -20,31 +20,6 @@ void main() {
     await settleFlowDoUi(tester);
   }
 
-  Future<void> promoteInboxTask(WidgetTester tester, String title) async {
-    final categoryChip = find.descendant(
-      of: find.ancestor(
-        of: find.text(title, skipOffstage: false),
-        matching: find.byType(Dismissible),
-      ),
-      matching: find.text('仕事'),
-    );
-    await tester.ensureVisible(categoryChip);
-    await settleFlowDoUi(tester);
-    await tester.tap(categoryChip);
-    await tester.pump();
-    await settleFlowDoUi(tester);
-
-    await tester.tap(
-      find.descendant(
-        of: find.byType(BottomSheet),
-        matching: find.text('仕事'),
-      ).last,
-    );
-    await tester.pump();
-    await settleAfterDialogClosed(tester);
-    await settleInboxPromoteDelay(tester);
-  }
-
   Finder pinButtonFor(String title) {
     return find.descendant(
       of: find.ancestor(
@@ -56,6 +31,13 @@ void main() {
   }
 
   testWidgets('📌切替で他タスクが消えない', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
     await pumpFlowDoApp(
       tester,
       initialPreferences: {
@@ -67,12 +49,13 @@ void main() {
 
     await registerInboxTask(tester, '固定タスクA');
     await registerInboxTask(tester, '固定タスクB');
-    await promoteInboxTask(tester, '固定タスクA');
-    await promoteInboxTask(tester, '固定タスクB');
+    await organizeInboxTasks(tester, count: 2);
 
     expect(find.text('固定タスクA', skipOffstage: false), findsOneWidget);
     expect(find.text('固定タスクB', skipOffstage: false), findsOneWidget);
 
+    await tester.ensureVisible(pinButtonFor('固定タスクA'));
+    await settleFlowDoUi(tester);
     await tester.tap(pinButtonFor('固定タスクA'));
     await tester.pump();
     await settleFlowDoUi(tester);
@@ -80,6 +63,8 @@ void main() {
     expect(find.text('固定タスクA', skipOffstage: false), findsOneWidget);
     expect(find.text('固定タスクB', skipOffstage: false), findsOneWidget);
 
+    await tester.ensureVisible(pinButtonFor('固定タスクB'));
+    await settleFlowDoUi(tester);
     await tester.tap(pinButtonFor('固定タスクB'));
     await tester.pump();
     await settleFlowDoUi(tester);

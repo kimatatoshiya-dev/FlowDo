@@ -73,11 +73,11 @@ void main() {
 
     expect(find.text('仕事'), findsWidgets);
 
+    await revealPendingCategoryFilterBar(tester);
     final workFilter = find.descendant(
-      of: find.byType(CategoryBar),
+      of: find.byKey(const ValueKey('pending_category_filter_bar')),
       matching: find.text('仕事'),
     );
-    await tester.ensureVisible(workFilter);
     await tester.tap(workFilter);
     await settleFlowDoUi(tester);
 

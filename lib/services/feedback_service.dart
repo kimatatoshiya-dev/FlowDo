@@ -51,6 +51,9 @@ abstract class FeedbackService {
   /// ユーザー設定を反映してフィードバックを再生する
   Future<void> play(FeedbackEvent event);
 
+  /// 軽い触覚フィードバックのみ（BottomSheet 完了など）
+  Future<void> playLightHaptic();
+
   /// AI 整理の静かな演出（開始時のみ Light Impact + 「シャーー…」）
   Future<void> runOrganizeFeedback(Future<void> Function() organize);
 
@@ -106,6 +109,12 @@ class NativeFeedbackService implements FeedbackService {
     if (_preferences.soundEnabled) {
       await _playSound(event);
     }
+  }
+
+  @override
+  Future<void> playLightHaptic() async {
+    if (!_preferences.hapticEnabled) return;
+    await HapticFeedback.lightImpact();
   }
 
   @override
@@ -176,6 +185,9 @@ class NoOpFeedbackService implements FeedbackService {
 
   @override
   Future<void> play(FeedbackEvent event) async {}
+
+  @override
+  Future<void> playLightHaptic() async {}
 
   @override
   Future<void> runOrganizeFeedback(Future<void> Function() organize) async {

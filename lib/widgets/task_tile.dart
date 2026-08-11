@@ -652,6 +652,7 @@ class GroupedTaskList extends StatelessWidget {
     this.onPromoteTask,
     this.enablePinnedReorder = false,
     this.onPinnedReorder,
+    this.showSectionTitle = true,
   });
 
   final String title;
@@ -680,6 +681,7 @@ class GroupedTaskList extends StatelessWidget {
   final Future<void> Function(Task task)? onPromoteTask;
   final bool enablePinnedReorder;
   final void Function(List<Task> reorderedPinned)? onPinnedReorder;
+  final bool showSectionTitle;
 
   TaskTile _taskTileFor(Task task, {required bool showDivider}) {
     return TaskTile(
@@ -698,7 +700,7 @@ class GroupedTaskList extends StatelessWidget {
       enableInboxPromoteSwipe: isInboxList && onPromoteTask != null,
       onPromoteSwipe:
           isInboxList && onPromoteTask != null ? () => onPromoteTask!(task) : null,
-      categoryChipTooltip: isInboxList ? 'リストへ移動' : null,
+      categoryChipTooltip: isInboxList ? 'グループを変更' : null,
       onToggle: () => onToggle(task),
       onEdit: () => onEdit(task),
       onDelete: () => onDelete(task),
@@ -727,12 +729,15 @@ class GroupedTaskList extends StatelessWidget {
         children: [
           ReorderableDragStartListener(
             index: index,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 2, top: 10),
-              child: Icon(
-                Icons.drag_handle,
-                size: 22,
-                color: colors.secondaryLabel.withValues(alpha: 0.8),
+            child: Tooltip(
+              message: '長押しして並び替え',
+              child: Padding(
+                padding: const EdgeInsets.only(left: 2, top: 10),
+                child: Icon(
+                  Icons.swap_vert,
+                  size: 22,
+                  color: colors.secondaryLabel.withValues(alpha: 0.85),
+                ),
               ),
             ),
           ),
@@ -823,17 +828,18 @@ class GroupedTaskList extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 8),
-            child: Text(
-              title.toUpperCase(),
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: colors.secondaryLabel,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
-                  ),
+          if (showSectionTitle)
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 8),
+              child: Text(
+                title.toUpperCase(),
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: colors.secondaryLabel,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
+                    ),
+              ),
             ),
-          ),
           if (showInboxGuidance) const InboxGuidanceBanner(),
           if (isCompletedList)
             Column(

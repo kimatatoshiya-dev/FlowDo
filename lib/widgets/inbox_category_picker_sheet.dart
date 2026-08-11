@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/category_item.dart';
 import '../theme/app_theme.dart';
 
-/// Inbox タスクをリストへ移動するためのカテゴリー選択シート
+/// Inbox タスクのグループ（カテゴリー）を選ぶシート
 class InboxCategoryPickerSheet extends StatelessWidget {
   const InboxCategoryPickerSheet({
     super.key,
@@ -41,14 +41,14 @@ class InboxCategoryPickerSheet extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'どこに置きますか？',
+              'グループを選択',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
             ),
             const SizedBox(height: 4),
             Text(
-              '選んだカテゴリーへ移動します',
+              '整理するまでInboxに残ります',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: colors.secondaryLabel,
                   ),

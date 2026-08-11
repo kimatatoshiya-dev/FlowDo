@@ -46,21 +46,45 @@ Future<void> pumpFlowDoApp(
   await tester.pump(const Duration(milliseconds: 300));
 }
 
+/// Inbox のタスクを未完了リストへ移動する（整理するボタン）
+Future<void> organizeInboxTasks(WidgetTester tester, {required int count}) async {
+  await tester.tap(find.text('$count件を整理する'));
+  await tester.pump();
+  await settleFlowDoUi(tester);
+}
+
 /// 操作後に UI を落ち着かせる（pumpAndSettle はセッション計測タイマーで止まるため使わない）
 Future<void> settleFlowDoUi(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 300));
 }
 
-/// ダッシュボード拡張後も CategoryBar をビルド・表示させる
+/// Inbox セクション内の CategoryBar を表示させる
 Future<void> revealCategoryBar(WidgetTester tester) async {
+  final bar = find.byKey(const ValueKey('inbox_category_bar'));
+  if (bar.evaluate().isEmpty) return;
+  await tester.ensureVisible(bar);
+  await settleFlowDoUi(tester);
+}
+
+/// 未完了リストのカテゴリーフィルター CategoryBar を表示させる
+Future<void> revealPendingCategoryFilterBar(WidgetTester tester) async {
   final homeScroll = find.byType(CustomScrollView);
   if (homeScroll.evaluate().isEmpty) return;
 
-  for (var i = 0; i < 6; i++) {
-    if (find.byType(CategoryBar).evaluate().isNotEmpty) break;
-    await tester.drag(homeScroll, const Offset(0, -200));
+  for (var i = 0; i < 15; i++) {
+    if (find
+        .byKey(const ValueKey('pending_category_filter_bar'))
+        .evaluate()
+        .isNotEmpty) {
+      break;
+    }
+    await tester.drag(homeScroll, const Offset(0, -280));
     await tester.pump();
   }
+
+  final bar = find.byKey(const ValueKey('pending_category_filter_bar'));
+  if (bar.evaluate().isEmpty) return;
+  await tester.ensureVisible(bar);
   await settleFlowDoUi(tester);
 }
 
@@ -98,8 +122,8 @@ void expectAiOrganizeButtonHidden() {
 }
 
 /// 無料版では手動の「整理する」ボタンが表示されることを検証する。
-void expectManualOrganizeButtonVisible() {
-  expect(find.text('整理する'), findsOneWidget);
+void expectManualOrganizeButtonVisible({int inboxCount = 0}) {
+  expect(find.text(inboxCount == 0 ? '整理する' : '$inboxCount件を整理する'), findsOneWidget);
 }
 
 /// 有料版向け: AI 整理ボタンの Finder。

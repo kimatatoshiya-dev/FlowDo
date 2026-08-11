@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+  <!-- FlowDo: 7åå…SF Symbols¨ûRegular weight	 -->
+  <path
+    d="M8 2.75V6.25M16 2.75V6.25"
+    stroke="currentColor"
+    stroke-width="1.75"
+    stroke-linecap="round"
+  />
+  <rect
+    x="3.5"
+    y="4.75"
+    width="17"
+    height="16.75"
+    rx="2.25"
+    stroke="currentColor"
+    stroke-width="1.75"
+  />
+  <path
+    d="M3.5 9.75H20.5"
+    stroke="currentColor"
+    stroke-width="1.75"
+  />
+  <path
+    d="M14.35 12.15H10.15L13.55 18.35H15.45L11.25 12.15H14.35Z"
+    fill="currentColor"
+  />
+</svg>

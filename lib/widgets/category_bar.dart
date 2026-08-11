@@ -13,6 +13,8 @@ class CategoryBar extends StatefulWidget {
     required this.onAdd,
     required this.onRename,
     required this.onDelete,
+    this.padding = const EdgeInsets.fromLTRB(16, 12, 16, 0),
+    this.addButtonKey = const ValueKey('category_add_chip'),
   });
 
   final List<CategoryItem> categories;
@@ -21,6 +23,8 @@ class CategoryBar extends StatefulWidget {
   final ValueChanged<String> onAdd;
   final ValueChanged<CategoryItem> onRename;
   final ValueChanged<CategoryItem> onDelete;
+  final EdgeInsetsGeometry padding;
+  final Key addButtonKey;
 
   @override
   State<CategoryBar> createState() => _CategoryBarState();
@@ -105,7 +109,7 @@ class _CategoryBarState extends State<CategoryBar> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: widget.padding,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
@@ -132,6 +136,7 @@ class _CategoryBarState extends State<CategoryBar> {
                 ),
               ),
             _AddCategoryChip(
+              key: widget.addButtonKey,
               enabled: !_isDialogOpen,
               onTap: _showAddDialog,
             ),
@@ -200,6 +205,7 @@ class _CategoryChip extends StatelessWidget {
 
 class _AddCategoryChip extends StatelessWidget {
   const _AddCategoryChip({
+    super.key,
     required this.enabled,
     required this.onTap,
   });
@@ -212,7 +218,6 @@ class _AddCategoryChip extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Material(
-      key: const ValueKey('category_add_chip'),
       color: colorScheme.surfaceContainerHighest,
       shape: StadiumBorder(
         side: BorderSide(color: colorScheme.outlineVariant),
