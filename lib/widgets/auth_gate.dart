@@ -21,7 +21,6 @@ class AuthGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (kGuestModeEnabled || !kCloudAuthEnabled) {
-      startupTrace('AuthGate -> guest mode home');
       return signedInBuilder(context);
     }
 

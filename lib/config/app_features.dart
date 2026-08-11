@@ -6,7 +6,8 @@ library;
 /// AI 整理（OpenAI）。
 const kAiOrganizeEnabled = false;
 
-/// Firebase（Analytics / Crashlytics / Auth / Firestore）。
+/// Firebase（Analytics / Crashlytics / Auth / Firestore）の機能利用。
+/// false でも iOS ネイティブ SDK 同梱のため Core 初期化は行い、送信のみ無効化する。
 const kFirebaseEnabled = false;
 
 /// クラウド認証・同期（Google / Apple ログイン、Firestore）。

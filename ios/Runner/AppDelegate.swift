@@ -6,10 +6,6 @@ import UIKit
   override init() {
     super.init()
     NSLog("[FlowDoNativeStartup] AppDelegate.init start")
-    #if DEBUG
-    FirebaseAnalyticsDebugMode.enableIfNeeded()
-    NSLog("[FlowDoNativeStartup] AppDelegate.init FirebaseAnalyticsDebugMode done")
-    #endif
     NSLog("[FlowDoNativeStartup] AppDelegate.init end")
   }
 

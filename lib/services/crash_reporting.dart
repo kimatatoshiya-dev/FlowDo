@@ -37,22 +37,22 @@ void installStartupErrorHandlers() {
 /// Firebase 初期化・Crashlytics・Analytics をセットアップする
 Future<AnalyticsService> initializeAppMonitoring() async {
   installStartupErrorHandlers();
-  if (!kFirebaseEnabled) {
-    startupTrace('initializeAppMonitoring() skipped', 'kFirebaseEnabled=false');
+
+  try {
+    await _ensureFirebaseCoreReady();
+  } catch (error, stack) {
+    startupTrace('Firebase core setup FAILED', error);
+    debugPrint('Firebase core setup failed: $error');
+    debugPrint(stack.toString());
     return const NoOpAnalyticsService();
   }
 
-  startupTrace('Firebase.initializeApp() starting');
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
+  if (!kFirebaseEnabled) {
+    startupTrace(
+      'initializeAppMonitoring() firebase disabled',
+      'apps=${Firebase.apps.length}',
     );
-    startupTrace('Firebase.initializeApp() done', 'apps=${Firebase.apps.length}');
-  } catch (error, stack) {
-    startupTrace('Firebase.initializeApp() FAILED', error);
-    debugPrint('Firebase initialization failed: $error');
-    debugPrint(stack.toString());
-    _installDebugErrorHandlers();
+    await _disableFirebaseTelemetry();
     return const NoOpAnalyticsService();
   }
 
@@ -72,6 +72,40 @@ Future<AnalyticsService> initializeAppMonitoring() async {
     debugPrint(stack.toString());
     _installDebugErrorHandlers();
     return const NoOpAnalyticsService();
+  }
+}
+
+Future<void> _ensureFirebaseCoreReady() async {
+  if (Firebase.apps.isNotEmpty) {
+    startupTrace(
+      'Firebase already initialized',
+      'apps=${Firebase.apps.length}',
+    );
+    return;
+  }
+
+  startupTrace('Firebase.initializeApp() starting');
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    startupTrace('Firebase.initializeApp() done', 'apps=${Firebase.apps.length}');
+  } on FirebaseException catch (error) {
+    if (error.code == 'duplicate-app' || Firebase.apps.isNotEmpty) {
+      startupTrace('Firebase.initializeApp() duplicate ignored');
+      return;
+    }
+    rethrow;
+  }
+}
+
+Future<void> _disableFirebaseTelemetry() async {
+  try {
+    await FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(false);
+    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(false);
+  } catch (error, stack) {
+    debugPrint('Failed to disable Firebase telemetry: $error');
+    debugPrint(stack.toString());
   }
 }
 
