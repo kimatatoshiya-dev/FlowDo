@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/category_item.dart';
 import '../models/task.dart';
 import '../models/task_priority.dart';
+import '../models/task_sort_mode.dart';
 import '../theme/app_theme.dart';
 import '../utils/date_formatter.dart';
 import 'inbox_promote_pending.dart';
@@ -649,6 +650,8 @@ class GroupedTaskList extends StatelessWidget {
     this.isInboxList = false,
     this.showInboxGuidance = false,
     this.onPromoteTask,
+    this.enablePinnedReorder = false,
+    this.onPinnedReorder,
   });
 
   final String title;
@@ -675,6 +678,139 @@ class GroupedTaskList extends StatelessWidget {
   final bool isInboxList;
   final bool showInboxGuidance;
   final Future<void> Function(Task task)? onPromoteTask;
+  final bool enablePinnedReorder;
+  final void Function(List<Task> reorderedPinned)? onPinnedReorder;
+
+  TaskTile _taskTileFor(Task task, {required bool showDivider}) {
+    return TaskTile(
+      task: task,
+      category: resolveCategory(task.categoryId, categories),
+      showCompletedStyle: showCompletedStyle(task),
+      isRemoving: isRemoving(task),
+      isLayoutHighlight: isLayoutHighlight?.call(task) ?? false,
+      isLayoutAnimating: isLayoutAnimating?.call(task) ?? false,
+      isRegistrationFeedback: isRegistrationFeedback?.call(task) ?? false,
+      isInboxPromotePending: isInboxPromotePending?.call(task) ?? false,
+      showCompletionToggle: showCompletionToggle,
+      showMetaChips: showMetaChips,
+      openEditOnRowTap: openEditOnRowTap,
+      isCompletedList: isCompletedList,
+      enableInboxPromoteSwipe: isInboxList && onPromoteTask != null,
+      onPromoteSwipe:
+          isInboxList && onPromoteTask != null ? () => onPromoteTask!(task) : null,
+      categoryChipTooltip: isInboxList ? 'リストへ移動' : null,
+      onToggle: () => onToggle(task),
+      onEdit: () => onEdit(task),
+      onDelete: () => onDelete(task),
+      onDismissDelete: () => onDismissDelete(task),
+      onCategoryTap: () => onCategoryTap(task),
+      onPriorityTap: () => onPriorityTap(task),
+      onDueDateTap: () => onDueDateTap(task),
+      onFavoriteTap: () => onFavoriteTap(task),
+      showDivider: showDivider,
+    );
+  }
+
+  Widget _buildPinnedReorderRow(
+    BuildContext context,
+    FlowDoColors colors,
+    Task task,
+    int index,
+    int pinnedCount,
+    bool hasUnpinned,
+  ) {
+    return Material(
+      key: ValueKey('pinned-reorder-${task.id}'),
+      color: Colors.transparent,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ReorderableDragStartListener(
+            index: index,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 2, top: 10),
+              child: Icon(
+                Icons.drag_handle,
+                size: 22,
+                color: colors.secondaryLabel.withValues(alpha: 0.8),
+              ),
+            ),
+          ),
+          Expanded(
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+              alignment: Alignment.topCenter,
+              child: _taskTileFor(
+                task,
+                showDivider: index < pinnedCount - 1 || hasUnpinned,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPendingGroupedList(BuildContext context, FlowDoColors colors) {
+    final (pinned, unpinned) = splitPinnedTasks(tasks);
+    final canReorderPinned =
+        enablePinnedReorder && pinned.length >= 2 && onPinnedReorder != null;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.groupedSurface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          if (canReorderPinned)
+            ReorderableListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: false,
+              itemCount: pinned.length,
+              onReorder: (oldIndex, newIndex) {
+                final next = List<Task>.from(pinned);
+                if (newIndex > oldIndex) newIndex -= 1;
+                next.insert(newIndex, next.removeAt(oldIndex));
+                onPinnedReorder!(next);
+              },
+              itemBuilder: (context, index) => _buildPinnedReorderRow(
+                context,
+                colors,
+                pinned[index],
+                index,
+                pinned.length,
+                unpinned.isNotEmpty,
+              ),
+            )
+          else
+            for (var i = 0; i < pinned.length; i++)
+              AnimatedSize(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOut,
+                alignment: Alignment.topCenter,
+                child: _taskTileFor(
+                  pinned[i],
+                  showDivider: i < pinned.length - 1 || unpinned.isNotEmpty,
+                ),
+              ),
+          for (var i = 0; i < unpinned.length; i++)
+            AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+              alignment: Alignment.topCenter,
+              child: _taskTileFor(
+                unpinned[i],
+                showDivider: i < unpinned.length - 1,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -746,59 +882,7 @@ class GroupedTaskList extends StatelessWidget {
               ],
             )
           else
-            Container(
-              decoration: BoxDecoration(
-                color: colors.groupedSurface,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: [
-                  for (var i = 0; i < tasks.length; i++)
-                    AnimatedSize(
-                      duration: const Duration(milliseconds: 250),
-                      curve: Curves.easeOut,
-                      alignment: Alignment.topCenter,
-                      child: TaskTile(
-                        task: tasks[i],
-                        category: resolveCategory(
-                          tasks[i].categoryId,
-                          categories,
-                        ),
-                        showCompletedStyle: showCompletedStyle(tasks[i]),
-                        isRemoving: isRemoving(tasks[i]),
-                        isLayoutHighlight:
-                            isLayoutHighlight?.call(tasks[i]) ?? false,
-                        isLayoutAnimating:
-                            isLayoutAnimating?.call(tasks[i]) ?? false,
-                        isRegistrationFeedback:
-                            isRegistrationFeedback?.call(tasks[i]) ?? false,
-                        isInboxPromotePending:
-                            isInboxPromotePending?.call(tasks[i]) ?? false,
-                        showCompletionToggle: showCompletionToggle,
-                        showMetaChips: showMetaChips,
-                        openEditOnRowTap: openEditOnRowTap,
-                        enableInboxPromoteSwipe:
-                            isInboxList && onPromoteTask != null,
-                        onPromoteSwipe: isInboxList && onPromoteTask != null
-                            ? () => onPromoteTask!(tasks[i])
-                            : null,
-                        categoryChipTooltip:
-                            isInboxList ? 'リストへ移動' : null,
-                        onToggle: () => onToggle(tasks[i]),
-                        onEdit: () => onEdit(tasks[i]),
-                        onDelete: () => onDelete(tasks[i]),
-                        onDismissDelete: () => onDismissDelete(tasks[i]),
-                        onCategoryTap: () => onCategoryTap(tasks[i]),
-                        onPriorityTap: () => onPriorityTap(tasks[i]),
-                        onDueDateTap: () => onDueDateTap(tasks[i]),
-                        onFavoriteTap: () => onFavoriteTap(tasks[i]),
-                        showDivider: i < tasks.length - 1,
-                      ),
-                    ),
-                ],
-              ),
-            ),
+            _buildPendingGroupedList(context, colors),
         ],
       ),
     );

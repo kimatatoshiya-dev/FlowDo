@@ -1286,9 +1286,53 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     await _applySort(selected);
   }
 
-  int get _pendingCount => _tasks.where((t) => !t.isCompleted).length;
-  int get _completedCount => _tasks.where((t) => t.isCompleted).length;
-  int get _dueTodayCount => _tasks.where((t) => t.isDueToday).length;
+  int get _pinnedCount =>
+      _tasks.where((t) => !t.isCompleted && t.isFavorite).length;
+  int get _dueTodayCount =>
+      _tasks.where((t) => !t.isCompleted && t.isDueToday).length;
+  int get _dueWithin7DaysCount =>
+      _tasks.where((t) => !t.isCompleted && t.isDueWithin7Days).length;
+
+  List<CategoryIncompleteCount> get _categoryIncompleteCounts {
+    final counts = <String, int>{};
+    for (final task in _tasks) {
+      if (task.isCompleted) continue;
+      counts.update(task.categoryId, (value) => value + 1, ifAbsent: () => 1);
+    }
+
+    final result = <CategoryIncompleteCount>[];
+    for (final category in _categories) {
+      final count = counts[category.id];
+      if (count == null || count == 0) continue;
+      result.add(CategoryIncompleteCount(category: category, count: count));
+    }
+    result.sort((a, b) => b.count.compareTo(a.count));
+    return result;
+  }
+
+  Future<void> _reorderPinnedTasks(
+    List<Task> reorderedPinned, {
+    required bool isInbox,
+  }) async {
+    if (reorderedPinned.length < 2) return;
+
+    applyPinnedAtOrder(reorderedPinned);
+    final pinnedIds = reorderedPinned.map((task) => task.id).toSet();
+
+    await _updateTasks(() {
+      final startIdx = _tasks.indexWhere(
+        (task) =>
+            task.isFavorite &&
+            task.isInbox == isInbox &&
+            !task.isCompleted &&
+            pinnedIds.contains(task.id),
+      );
+      if (startIdx < 0) return;
+
+      _tasks.removeWhere((task) => pinnedIds.contains(task.id));
+      _tasks.insertAll(startIdx, reorderedPinned);
+    });
+  }
 
   Future<void> _showEditTaskSheet(Task task) async {
     final result = await TaskEditSheet.show(context, title: task.title);
@@ -1662,6 +1706,11 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                         onPriorityTap: _cyclePriority,
                         onDueDateTap: _pickDueDate,
                         onFavoriteTap: _togglePin,
+                        enablePinnedReorder: true,
+                        onPinnedReorder: (reordered) => _reorderPinnedTasks(
+                          reordered,
+                          isInbox: true,
+                        ),
                         isInboxList: true,
                         showInboxGuidance: _showInboxGuidance,
                         onPromoteTask: _promoteInboxTaskWithCurrentCategory,
@@ -1669,10 +1718,10 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                     ),
                   SliverToBoxAdapter(
                     child: HomeDashboard(
-                      completedCount: _completedCount,
-                      pendingCount: _pendingCount,
+                      pinnedCount: _pinnedCount,
                       dueTodayCount: _dueTodayCount,
-                      totalCount: _tasks.length,
+                      dueWithin7DaysCount: _dueWithin7DaysCount,
+                      categoryCounts: _categoryIncompleteCounts,
                     ),
                   ),
                   SliverToBoxAdapter(
@@ -1757,6 +1806,11 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                           onPriorityTap: _cyclePriority,
                           onDueDateTap: _pickDueDate,
                           onFavoriteTap: _togglePin,
+                          enablePinnedReorder: true,
+                          onPinnedReorder: (reordered) => _reorderPinnedTasks(
+                            reordered,
+                            isInbox: false,
+                          ),
                         ),
                       ),
                     if (completedTasks.isNotEmpty)
