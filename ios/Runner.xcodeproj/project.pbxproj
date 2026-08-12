@@ -19,8 +19,6 @@
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
 		B1C2D3E41CF9000F007C117E /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = B1C2D3E51CF9000F007C117E /* GoogleService-Info.plist */; };
 		F1A2B3C41CF9000F007C117F /* FirebaseAnalyticsDebugMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C51CF9000F007C117F /* FirebaseAnalyticsDebugMode.swift */; };
-		A1B2C3D41CF9000F007C1182 /* FlowDoLaunchPrewarm.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D51CF9000F007C1182 /* FlowDoLaunchPrewarm.m */; };
-		A1B2C3D71CF9000F007C1182 /* FlowDoFlutterViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D81CF9000F007C1182 /* FlowDoFlutterViewController.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -74,10 +72,6 @@
 		C3D4E5F61CF9000F007C1180 /* Runner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Runner.entitlements; sourceTree = "<group>"; };
 		D4E5F6A71CF9000F007C1181 /* Runner-Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Runner-Debug.entitlements"; sourceTree = "<group>"; };
 		F1A2B3C51CF9000F007C117F /* FirebaseAnalyticsDebugMode.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FirebaseAnalyticsDebugMode.swift; sourceTree = "<group>"; };
-		A1B2C3D51CF9000F007C1182 /* FlowDoLaunchPrewarm.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = FlowDoLaunchPrewarm.m; sourceTree = "<group>"; };
-		A1B2C3D61CF9000F007C1182 /* FlowDoLaunchPrewarm.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FlowDoLaunchPrewarm.h; sourceTree = "<group>"; };
-		A1B2C3D81CF9000F007C1182 /* FlowDoFlutterViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = FlowDoFlutterViewController.m; sourceTree = "<group>"; };
-		A1B2C3D91CF9000F007C1182 /* FlowDoFlutterViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FlowDoFlutterViewController.h; sourceTree = "<group>"; };
 		FA9AA391E0A03146345E748F /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -177,10 +171,6 @@
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
 				F1A2B3C51CF9000F007C117F /* FirebaseAnalyticsDebugMode.swift */,
-				A1B2C3D61CF9000F007C1182 /* FlowDoLaunchPrewarm.h */,
-				A1B2C3D51CF9000F007C1182 /* FlowDoLaunchPrewarm.m */,
-				A1B2C3D91CF9000F007C1182 /* FlowDoFlutterViewController.h */,
-				A1B2C3D81CF9000F007C1182 /* FlowDoFlutterViewController.m */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
@@ -438,8 +428,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
-				A1B2C3D41CF9000F007C1182 /* FlowDoLaunchPrewarm.m in Sources */,
-				A1B2C3D71CF9000F007C1182 /* FlowDoFlutterViewController.m in Sources */,
 				F1A2B3C41CF9000F007C117F /* FirebaseAnalyticsDebugMode.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,

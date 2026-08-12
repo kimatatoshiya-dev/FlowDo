@@ -8,8 +8,6 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'app_bootstrap.dart';
 import 'config/app_features.dart';
-import 'debug/persist_device_verify.dart';
-import 'debug/persist_verify_banner.dart';
 import 'debug/startup_trace.dart';
 import 'debug/task_persistence_diag.dart';
 import 'models/category_item.dart';
@@ -53,9 +51,10 @@ import 'widgets/task_input_bar.dart';
 import 'widgets/task_tile.dart';
 
 Future<void> main() async {
-  startupTrace('main() entered');
+  startupProbe('① main() entered');
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+    startupProbe('② WidgetsFlutterBinding.ensureInitialized() done');
     installStartupErrorHandlers();
     startupTrace('WidgetsFlutterBinding.ensureInitialized done');
     try {
@@ -66,14 +65,17 @@ Future<void> main() async {
       debugPrint(stackTrace.toString());
     }
     try {
+      startupProbe('③ bootstrapApp() starting');
       startupTrace('bootstrapApp() starting');
       final bootstrap = await bootstrapApp().timeout(
         const Duration(seconds: 30),
         onTimeout: () =>
             throw TimeoutException('App bootstrap timed out after 30 seconds'),
       );
+      startupProbe('③ bootstrapApp() completed');
       startupTrace('bootstrapApp() completed');
       final taskNotificationService = createTaskNotificationService();
+      startupProbe('④ runApp(FlowDoApp) calling');
       runApp(
         FlowDoApp(
           analyticsService: bootstrap.analyticsService,
@@ -82,67 +84,20 @@ Future<void> main() async {
           taskNotificationService: taskNotificationService,
         ),
       );
+      startupProbe('④ runApp(FlowDoApp) called');
       startupTrace('runApp(FlowDoApp) called');
     } catch (error, stackTrace) {
+      startupProbe('③ bootstrapApp() FAILED', error);
       startupTrace('bootstrapApp() FAILED', error);
       debugPrint('App bootstrap failed: $error');
       debugPrint(stackTrace.toString());
+      startupProbe('④ runApp(BootstrapErrorApp) calling');
       runApp(BootstrapErrorApp(error: error));
+      startupProbe('④ runApp(BootstrapErrorApp) called');
       startupTrace('runApp(BootstrapErrorApp) called');
     }
   }, reportZonedError);
 }
-
-/// 実機検証用: `--dart-define=FLOWDO_VERIFY_NOTIF=true` で
-/// 16分後のタスク → 15分前（約1分後）に通知が届くことを確認する。
-Future<void> _maybeRunNotificationDeviceVerification(
-  TaskNotificationService service,
-) async {
-  if (!kTaskNotificationsEnabled) return;
-  if (!kDebugMode || !const bool.fromEnvironment('FLOWDO_VERIFY_NOTIF')) {
-    return;
-  }
-
-  try {
-    final now = DateTime.now();
-    final dueDateTime = now.add(const Duration(minutes: 16));
-    final task = Task(
-      id: 999001,
-      title: '通知検証',
-      isInbox: false,
-      dueDate: DateTime(
-        dueDateTime.year,
-        dueDateTime.month,
-        dueDateTime.day,
-      ),
-      reminderTime: TimeOfDay(
-        hour: dueDateTime.hour,
-        minute: dueDateTime.minute,
-      ),
-    );
-
-    debugPrint(
-      '[FlowDoNotifVerify] scheduling verification task '
-      'due=${task.reminderTime} (expect notification ~1 min later)',
-    );
-
-    if (!await service.hasPermissions()) {
-      await service.requestPermissions();
-    }
-
-    await service.scheduleTaskNotification(task);
-    final pending = await service.pendingNotifications();
-    debugPrint(
-      '[FlowDoNotifVerify] pendingCount=${pending.length} '
-      'registered=${pending.any((request) => request.id == task.id)}',
-    );
-  } catch (error, stack) {
-    debugPrint('[FlowDoNotifVerify] failed: $error');
-    debugPrint(stack.toString());
-  }
-}
-
-/// 実機検証用: `--dart-define=FLOWDO_VERIFY_PERSIST=true`（persist_device_verify.dart 参照）
 
 /// Firebase 初期化失敗時に白画面にならないようエラーを表示する
 class BootstrapErrorApp extends StatelessWidget {
@@ -207,6 +162,7 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    startupProbe('⑤ FlowDoApp.initState()');
     startupTrace('FlowDoApp.initState');
     _taskNotificationService =
         widget.taskNotificationService ?? createTaskNotificationService();
@@ -216,37 +172,16 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
     unawaited(
       runAfterFirstFrame(() async {
         startupTrace('FlowDoApp.runAfterFirstFrame callback start');
-        await bootstrapAppStorage();
-        startupTrace('FlowDoApp.bootstrapAppStorage done');
-        await runPersistenceDeviceVerification(widget.taskRepository);
         if (await AppStorage.consumeFirstLaunchForAnalytics()) {
           unawaited(widget.analyticsService.logFirstLaunch());
         }
-        await _initializeNotificationService();
-        await Future.wait([
-          _restoreThemeMode(),
-          _restoreFeedbackPreferences(),
-          _restoreNotificationPreferences(),
-          _restoreCompletedTaskRetention(),
-        ]);
+        unawaited(_restoreThemeMode());
+        unawaited(_restoreFeedbackPreferences());
+        unawaited(_restoreNotificationPreferences());
+        unawaited(_restoreCompletedTaskRetention());
         startupTrace('FlowDoApp.runAfterFirstFrame callback done');
       }),
     );
-  }
-
-  Future<void> _initializeNotificationService() async {
-    if (!kTaskNotificationsEnabled) return;
-
-    try {
-      await safeInitializeTaskNotifications(_taskNotificationService);
-      if (await AppStorage.consumeNotificationPermissionPrompt()) {
-        await _taskNotificationService.requestPermissions();
-      }
-      await _maybeRunNotificationDeviceVerification(_taskNotificationService);
-    } catch (error, stack) {
-      debugPrint('Notification service startup failed: $error');
-      debugPrint(stack.toString());
-    }
   }
 
   @override
@@ -413,9 +348,9 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    startupProbe('⑤ FlowDoApp.build()');
     startupTrace('FlowDoApp.build');
-    return wrapWithPersistVerifyOverlay(
-      child: MaterialApp(
+    return MaterialApp(
       title: 'FlowDo',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
@@ -447,7 +382,6 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
           taskRepository: widget.taskRepository,
         ),
       ),
-    ),
     );
   }
 }
@@ -532,6 +466,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   Timer? _keyboardScrollTimer;
   bool _isScrollingToInput = false;
   StreamSubscription<List<Task>>? _taskSubscription;
+  Timer? _loadingFallbackTimer;
   late final ValueNotifier<int> _todayFocusSheetRevision;
   final TodayFocusCompletionMessages _todayFocusCompletionMessages =
       TodayFocusCompletionMessages();
@@ -541,26 +476,28 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   void initState() {
     _todayFocusSheetRevision = ValueNotifier(0);
     super.initState();
+    startupProbe('⑥ FlowDoHomePage.initState()');
     startupTrace('FlowDoHomePage.initState');
     WidgetsBinding.instance.addObserver(this);
     unawaited(widget.analyticsService.logScreenView(AnalyticsScreen.home));
+    _taskSubscription = widget.taskRepository.watchTasks().listen(
+      _onWatchTaskSnapshot,
+      onError: (Object error, StackTrace stackTrace) {
+        startupTrace('FlowDoHomePage.watchTasks onError', error);
+        debugPrint('Task stream failed: $error');
+        debugPrint(stackTrace.toString());
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+      },
+    );
+    _loadingFallbackTimer = Timer(const Duration(seconds: 8), () {
+      if (!mounted || !_isLoading) return;
+      startupProbe('⑥ FlowDoHomePage loading timeout fallback');
+      setState(() => _isLoading = false);
+    });
     unawaited(
       runAfterFirstFrame(() async {
         startupTrace('FlowDoHomePage.runAfterFirstFrame callback start');
-        await bootstrapAppStorage();
-        startupTrace('FlowDoHomePage.bootstrapAppStorage done');
-        startupTrace('FlowDoHomePage.watchTasks() subscribing');
-        _taskSubscription = widget.taskRepository.watchTasks().listen(
-          _onWatchTaskSnapshot,
-          onError: (Object error, StackTrace stackTrace) {
-            startupTrace('FlowDoHomePage.watchTasks onError', error);
-            debugPrint('Task stream failed: $error');
-            debugPrint(stackTrace.toString());
-            if (!mounted) return;
-            setState(() => _isLoading = false);
-          },
-        );
-        startupTrace('FlowDoHomePage.watchTasks subscribed');
         await _loadMetadata();
         startupTrace('FlowDoHomePage._loadMetadata done');
       }),
@@ -604,6 +541,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _loadingFallbackTimer?.cancel();
     _taskSubscription?.cancel();
     _keyboardScrollTimer?.cancel();
     _layoutChangeTimer?.cancel();
@@ -2179,6 +2117,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
 
   @override
   Widget build(BuildContext context) {
+    startupProbe('⑥ FlowDoHomePage.build()', '_isLoading=$_isLoading');
     startupTrace('FlowDoHomePage.build', '_isLoading=$_isLoading');
     final colors = Theme.of(context).extension<FlowDoColors>()!;
     final recentTasks = _recentlyAddedTasks();

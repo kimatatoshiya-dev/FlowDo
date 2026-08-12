@@ -33,6 +33,7 @@ class AppBootstrapResult {
 }
 
 Future<AppBootstrapResult> bootstrapApp() async {
+  startupProbe('③ bootstrapApp() entered');
   startupTrace('bootstrapApp() entered');
   startupTrace('initializeAppMonitoring() starting');
   final analyticsService = await initializeAppMonitoring();
@@ -83,6 +84,7 @@ Future<AppBootstrapResult> bootstrapApp() async {
     startupTrace('taskRepository created', 'LocalTaskRepository');
   }
 
+  startupProbe('③ bootstrapApp() returning');
   startupTrace('bootstrapApp() returning');
   return AppBootstrapResult(
     analyticsService: analyticsService,

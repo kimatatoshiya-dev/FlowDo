@@ -26,6 +26,8 @@ class LocalTaskRepository implements TaskRepository {
     startupTrace('LocalTaskRepository.watchTasks() entered');
     if (!_hasSeededStream) {
       _hasSeededStream = true;
+      // ホーム画面を先に描画するため、空リストを即座に流してから読み込む。
+      yield const [];
       startupTrace('LocalTaskRepository.loadTasks() seeding stream');
       yield await loadTasks();
       startupTrace('LocalTaskRepository.loadTasks() seed done');
