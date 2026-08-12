@@ -257,20 +257,21 @@ class _DueDateTimeSummary extends StatelessWidget {
 
   final DateTime dueDate;
   final TimeOfDay? reminderTime;
-  final VoidCallback onEditDate;
-  final VoidCallback onEditTime;
+  final Future<void> Function() onEditDate;
+  final Future<void> Function() onEditTime;
   final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<FlowDoColors>()!;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.groupedSurface,
+    return Material(
+      color: colors.groupedSurface,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colors.separator.withValues(alpha: 0.9)),
+        side: BorderSide(color: colors.separator.withValues(alpha: 0.9)),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           _SettingRow(
@@ -393,7 +394,7 @@ class _SettingRow extends StatelessWidget {
 
   final String emoji;
   final String label;
-  final VoidCallback? onTap;
+  final Future<void> Function()? onTap;
   final bool enabled;
 
   @override
