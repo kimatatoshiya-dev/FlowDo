@@ -1724,50 +1724,72 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   }
 
   Future<void> _pickDueDate(Task task) async {
+    if (task.dueDate == null) {
+      await _startDueDateTimeFlow(task);
+      return;
+    }
+
     await TaskDueDateTimeSheet.show(
       context,
-      dueDate: task.dueDate,
-      reminderTime: task.reminderTime,
-      onPickDate: () async {
-        final now = DateTime.now();
-        final picked = await showDatePicker(
-          context: context,
-          initialDate: task.dueDate ?? now,
-          firstDate: now.subtract(const Duration(days: 365)),
-          lastDate: now.add(const Duration(days: 365 * 5)),
-        );
-        if (!mounted || picked == null) return;
-
-        final today = DateTime(now.year, now.month, now.day);
-        final due = DateTime(picked.year, picked.month, picked.day);
-        final daysUntilDue = due.difference(today).inDays;
-        await _updateTasks(() {
-          task.dueDate = due;
-        });
-        unawaited(
-          widget.analyticsService.logDeadlineSet(daysUntilDue: daysUntilDue),
-        );
-        if (task.isInbox) return;
-        _scheduleDeferredLayout(
-          taskId: task.id,
-          sortMode: TaskSortMode.dueDate,
-        );
-      },
-      onPickTime: () async {
-        if (task.dueDate == null) return;
-        final picked = await showTimePicker(
-          context: context,
-          initialTime: task.reminderTime ?? TimeOfDay.now(),
-        );
-        if (!mounted || picked == null) return;
-
-        await _updateTasks(() => task.reminderTime = picked);
-      },
-      onClearTime: () async {
-        if (task.reminderTime == null) return;
-        await _updateTasks(() => task.reminderTime = null);
-      },
+      initialDueDate: task.dueDate,
+      initialReminderTime: task.reminderTime,
+      onDueDateChanged: (dueDate) => _applyDueDate(task, dueDate),
+      onReminderTimeChanged: (reminderTime) => _applyReminderTime(task, reminderTime),
     );
+  }
+
+  Future<void> _startDueDateTimeFlow(Task task) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: now.subtract(const Duration(days: 365)),
+      lastDate: now.add(const Duration(days: 365 * 5)),
+    );
+    if (!mounted || picked == null) return;
+
+    final due = DateTime(picked.year, picked.month, picked.day);
+    await _applyDueDate(task, due);
+    if (!mounted) return;
+
+    await TaskDueDateTimeSheet.show(
+      context,
+      initialDueDate: due,
+      initialReminderTime: null,
+      promptForTimeOnOpen: true,
+      onDueDateChanged: (dueDate) => _applyDueDate(task, dueDate),
+      onReminderTimeChanged: (reminderTime) => _applyReminderTime(task, reminderTime),
+    );
+  }
+
+  Future<void> _applyDueDate(Task task, DateTime? dueDate) async {
+    if (!mounted) return;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    await _updateTasks(() {
+      task.dueDate = dueDate;
+      if (dueDate == null) {
+        task.reminderTime = null;
+      }
+    });
+
+    if (dueDate != null) {
+      final daysUntilDue = dueDate.difference(today).inDays;
+      unawaited(
+        widget.analyticsService.logDeadlineSet(daysUntilDue: daysUntilDue),
+      );
+      if (task.isInbox) return;
+      _scheduleDeferredLayout(
+        taskId: task.id,
+        sortMode: TaskSortMode.dueDate,
+      );
+    }
+  }
+
+  Future<void> _applyReminderTime(Task task, TimeOfDay? reminderTime) async {
+    if (!mounted) return;
+    await _updateTasks(() => task.reminderTime = reminderTime);
   }
 
   Future<void> _deleteTask(Task task) async {

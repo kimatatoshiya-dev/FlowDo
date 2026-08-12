@@ -66,4 +66,10 @@ class DateFormatter {
     final emoji = _clockEmojis[time.hour % 12];
     return '$emoji${formatReminderTime(time)}';
   }
+
+  /// 期限 BottomSheet 用の時間表示（例: 🕘 09:00）
+  static String formatReminderTimeSheet(TimeOfDay time) {
+    final emoji = _clockEmojis[time.hour % 12];
+    return '$emoji ${formatReminderTime(time)}';
+  }
 }

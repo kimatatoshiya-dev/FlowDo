@@ -43,5 +43,12 @@ void main() {
         '🕘09:00',
       );
     });
+
+    test('formatReminderTimeSheet は BottomSheet 向けにスペース付き', () {
+      expect(
+        DateFormatter.formatReminderTimeSheet(const TimeOfDay(hour: 9, minute: 0)),
+        '🕘 09:00',
+      );
+    });
   });
 }
