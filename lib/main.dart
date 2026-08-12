@@ -18,11 +18,14 @@ import 'models/today_focus.dart';
 import 'models/today_focus_completion_message.dart';
 import 'models/completed_task_retention.dart';
 import 'models/feedback_preferences.dart';
+import 'models/flowdo_data_snapshot.dart';
 import 'models/notification_preferences.dart';
 import 'screens/settings_page.dart';
 import 'services/app_storage.dart';
 import 'services/auth/auth_service.dart';
 import 'services/completed_task_cleanup.dart';
+import 'services/data_protection/flowdo_backup_service.dart';
+import 'services/data_protection/local_file_data_sync_adapter.dart';
 import 'services/analytics/analytics_service.dart';
 import 'services/crash_reporting.dart'
     show installStartupErrorHandlers, reportZonedError;
@@ -427,6 +430,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   final Set<int> _registrationFeedbackTaskIds = {};
   final Map<int, bool> _pendingFavoriteByTaskId = {};
   static const _layoutChangeDelay = Duration(milliseconds: 2500);
+  static const _dataSyncAdapter = LocalFileDataSyncAdapter();
   static const _layoutHighlightDelay = Duration(milliseconds: 400);
   static const _registrationFeedbackDuration = Duration(milliseconds: 500);
   static const _completionDelay = Duration(milliseconds: 2500);
@@ -1091,6 +1095,118 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     await _updateTasks(() {
       _tasks.removeWhere((task) => task.isCompleted);
     });
+  }
+
+  Future<void> _exportData() async {
+    final snapshot = FlowDoBackupService.buildSnapshot(
+      tasks: _tasks,
+      categories: _categories,
+      lastRegistrationCategoryId: _lastRegistrationCategoryId,
+    );
+    final json = FlowDoBackupService.encodeSnapshot(snapshot);
+    final fileName = FlowDoBackupService.suggestedFileName(snapshot.exportedAt);
+
+    try {
+      await _dataSyncAdapter.shareExportJson(
+        json: json,
+        fileName: fileName,
+      );
+    } catch (error, stack) {
+      debugPrint('Failed to export data: $error');
+      debugPrint(stack.toString());
+      if (!mounted) return;
+      _showDataProtectionMessage('エクスポートに失敗しました');
+    }
+  }
+
+  Future<void> _importData() async {
+    final json = await _dataSyncAdapter.pickImportJson();
+    if (json == null || !mounted) return;
+
+    FlowDoDataSnapshot snapshot;
+    try {
+      snapshot = FlowDoBackupService.decodeSnapshot(json);
+    } catch (error) {
+      debugPrint('Invalid import JSON: $error');
+      if (!mounted) return;
+      _showDataProtectionMessage('バックアップファイルの形式が正しくありません');
+      return;
+    }
+
+    final mode = await _showImportModeDialog(
+      taskCount: snapshot.payload.tasks.length,
+      categoryCount: snapshot.payload.categories.length,
+    );
+    if (mode == null || !mounted) return;
+
+    final result = FlowDoBackupService.applyImport(
+      snapshot: snapshot,
+      currentTasks: _tasks,
+      currentCategories: _categories,
+      currentLastRegistrationCategoryId: _lastRegistrationCategoryId,
+      mode: mode,
+    );
+
+    await _updateTasks(() {
+      _tasks
+        ..clear()
+        ..addAll(result.tasks);
+    });
+
+    if (!mounted) return;
+
+    setState(() {
+      _categories = result.categories;
+      _lastRegistrationCategoryId = result.lastRegistrationCategoryId;
+    });
+    await _saveCategories();
+    if (result.lastRegistrationCategoryId != null) {
+      await AppStorage.saveLastRegistrationCategoryId(
+        result.lastRegistrationCategoryId!,
+      );
+    }
+
+    if (!mounted) return;
+    _showDataProtectionMessage(
+      'インポート完了（タスク ${result.importedTaskCount} 件、'
+      'カテゴリー ${result.importedCategoryCount} 件）',
+    );
+  }
+
+  void _showDataProtectionMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<FlowDoImportMode?> _showImportModeDialog({
+    required int taskCount,
+    required int categoryCount,
+  }) async {
+    return showDialog<FlowDoImportMode>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('JSONをインポート'),
+        content: Text(
+          'タスク $taskCount 件、カテゴリー $categoryCount 件を読み込みます。\n'
+          '既存データとの統合方法を選んでください。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('キャンセル'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, FlowDoImportMode.merge),
+            child: const Text('マージ'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, FlowDoImportMode.replace),
+            child: const Text('置き換え'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _updateTasks(VoidCallback update) async {
@@ -1877,6 +1993,8 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
           onCompletedTaskRetentionChanged:
               widget.onCompletedTaskRetentionChanged,
           onDeleteAllCompletedTasks: _deleteAllCompletedTasks,
+          onExportData: _exportData,
+          onImportData: _importData,
           authService: widget.authService,
           onSignInWithGoogle: () => _signInWithGuestMigration(
             widget.authService.signInWithGoogle,

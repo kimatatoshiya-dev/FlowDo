@@ -28,6 +28,8 @@ void main() {
         completedTaskRetention: CompletedTaskRetention.defaults,
         onCompletedTaskRetentionChanged: (_) {},
         onDeleteAllCompletedTasks: () async {},
+        onExportData: () async {},
+        onImportData: () async {},
         authService: const NoOpAuthService(),
         onSignInWithGoogle: () async {},
         onSignInWithApple: () async {},
@@ -67,6 +69,9 @@ void main() {
     expect(find.text('通知', skipOffstage: false), findsWidgets);
     expect(find.text('通知タイミング', skipOffstage: false), findsOneWidget);
     expect(find.text('15分前（デフォルト）', skipOffstage: false), findsOneWidget);
+    expect(find.text('データ保護', skipOffstage: false), findsOneWidget);
+    expect(find.text('JSONをエクスポート', skipOffstage: false), findsOneWidget);
+    expect(find.text('JSONをインポート', skipOffstage: false), findsOneWidget);
   });
 
   testWidgets('アプリについて画面へ遷移できる', (WidgetTester tester) async {

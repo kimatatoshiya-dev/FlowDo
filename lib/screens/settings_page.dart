@@ -29,6 +29,8 @@ class SettingsPage extends StatefulWidget {
     required this.completedTaskRetention,
     required this.onCompletedTaskRetentionChanged,
     required this.onDeleteAllCompletedTasks,
+    required this.onExportData,
+    required this.onImportData,
     required this.authService,
     required this.onSignInWithGoogle,
     required this.onSignInWithApple,
@@ -45,6 +47,8 @@ class SettingsPage extends StatefulWidget {
   final CompletedTaskRetention completedTaskRetention;
   final ValueChanged<CompletedTaskRetention> onCompletedTaskRetentionChanged;
   final Future<void> Function() onDeleteAllCompletedTasks;
+  final Future<void> Function() onExportData;
+  final Future<void> Function() onImportData;
   final AuthService authService;
   final Future<void> Function() onSignInWithGoogle;
   final Future<void> Function() onSignInWithApple;
@@ -408,6 +412,24 @@ class _SettingsPageState extends State<SettingsPage> {
                     );
                   },
                 ),
+            ],
+          ),
+          const SettingsSectionHeader(title: 'データ保護'),
+          SettingsGroup(
+            children: [
+              SettingsLinkTile(
+                icon: Icons.upload_outlined,
+                title: 'JSONをエクスポート',
+                subtitle: 'タスクとカテゴリーをバックアップ',
+                onTap: () => unawaited(widget.onExportData()),
+              ),
+              SettingsLinkTile(
+                icon: Icons.download_outlined,
+                title: 'JSONをインポート',
+                subtitle: 'バックアップファイルから復元',
+                showDivider: false,
+                onTap: () => unawaited(widget.onImportData()),
+              ),
             ],
           ),
           if (kCloudAuthEnabled) ...[
