@@ -34,6 +34,7 @@ class TaskTile extends StatelessWidget {
     this.showMetaChips = true,
     this.openEditOnRowTap = false,
     this.isCompletedList = false,
+    this.isInboxList = false,
     this.enableInboxPromoteSwipe = false,
     this.onPromoteSwipe,
     this.categoryChipTooltip,
@@ -59,6 +60,7 @@ class TaskTile extends StatelessWidget {
   final bool showMetaChips;
   final bool openEditOnRowTap;
   final bool isCompletedList;
+  final bool isInboxList;
   final bool enableInboxPromoteSwipe;
   final Future<void> Function()? onPromoteSwipe;
   final String? categoryChipTooltip;
@@ -68,6 +70,38 @@ class TaskTile extends StatelessWidget {
   bool get _isPinnedTask => task.isFavorite && !_useCompletedVisual;
 
   static const _pinAccent = Color(0xFFFF9500);
+  static const _flowDoBlue = Color(0xFF007AFF);
+  static const _inboxUnorganizedFill = Color(0xFFF5F9FF);
+  static const _inboxStyleDuration = Duration(milliseconds: 200);
+
+  bool get _showInboxUnorganizedStyle =>
+      isInboxList && !isCompletedList && task.isInboxUnorganized;
+
+  Color _materialColor(FlowDoColors colors) {
+    if (_useCompletedVisual) return colors.completedTaskSurface;
+    if (_isPinnedTask && !_showInboxUnorganizedStyle) {
+      return _pinAccent.withValues(alpha: 0.08);
+    }
+    if (_showInboxUnorganizedStyle) return _inboxUnorganizedFill;
+    if (isInboxList) return colors.groupedSurface;
+    return Colors.transparent;
+  }
+
+  double get _leftStripeWidth {
+    if (_useCompletedVisual) return 3;
+    if (isInboxList) return _showInboxUnorganizedStyle ? 3 : 0;
+    return 3;
+  }
+
+  Color _leftStripeColor() {
+    if (_useCompletedVisual) {
+      return category.color.withValues(alpha: 0.45);
+    }
+    if (_isPinnedTask && !isInboxList) return _pinAccent;
+    if (_showInboxUnorganizedStyle) return _flowDoBlue;
+    if (isInboxList) return Colors.transparent;
+    return category.color;
+  }
 
   EdgeInsets get _contentPadding => _useCompletedVisual
       ? const EdgeInsets.fromLTRB(10, 5, 4, 5)
@@ -192,26 +226,31 @@ class TaskTile extends StatelessWidget {
                 Column(
             children: [
               Material(
-                color: _useCompletedVisual
-                    ? colors.completedTaskSurface
-                    : _isPinnedTask
-                        ? _pinAccent.withValues(alpha: 0.08)
-                        : Colors.transparent,
+                color: Colors.transparent,
                 borderRadius: isCompletedList
                     ? BorderRadius.circular(10)
                     : BorderRadius.zero,
-                child: IntrinsicHeight(
+                child: AnimatedContainer(
+                  duration: _inboxStyleDuration,
+                  curve: Curves.easeOut,
+                  decoration: BoxDecoration(
+                    color: _materialColor(colors),
+                    borderRadius: isCompletedList
+                        ? BorderRadius.circular(10)
+                        : BorderRadius.zero,
+                  ),
+                  child: IntrinsicHeight(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Container(
-                        width: 3,
+                      AnimatedContainer(
+                        duration: _inboxStyleDuration,
+                        curve: Curves.easeOut,
+                        width: _leftStripeWidth,
                         decoration: BoxDecoration(
-                          color: _useCompletedVisual
-                              ? category.color.withValues(alpha: 0.45)
-                              : _isPinnedTask
-                                  ? _pinAccent
-                                  : category.color,
+                          color: _leftStripeWidth > 0
+                              ? _leftStripeColor()
+                              : Colors.transparent,
                           borderRadius: isCompletedList
                               ? const BorderRadius.horizontal(
                                   left: Radius.circular(10),
@@ -233,6 +272,7 @@ class TaskTile extends StatelessWidget {
                                   child: GestureDetector(
                                     onTap: onToggle,
                                     child: AnimatedContainer(
+                                      key: const ValueKey('task_completion_checkbox'),
                                       duration:
                                           const Duration(milliseconds: 200),
                                       curve: Curves.easeOut,
@@ -332,6 +372,7 @@ class TaskTile extends StatelessWidget {
                     ],
                   ),
                 ),
+                ),
               ),
               if (showDivider && !isCompletedList)
                 Divider(height: 1, indent: 16, color: colors.separator),
@@ -361,12 +402,12 @@ class TaskTile extends StatelessWidget {
             : colorScheme.onSurface;
 
     final title = AnimatedDefaultTextStyle(
-      duration: const Duration(milliseconds: 200),
+      duration: _inboxStyleDuration,
       curve: Curves.easeOut,
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
             decoration: showStrike ? TextDecoration.lineThrough : null,
             color: titleColor,
-            fontWeight: FontWeight.w500,
+            fontWeight: _showInboxUnorganizedStyle ? FontWeight.w600 : FontWeight.w500,
             fontSize: useMutedCompleted ? 15 : null,
             height: useMutedCompleted ? 1.3 : null,
           ) ??
@@ -374,12 +415,54 @@ class TaskTile extends StatelessWidget {
       child: Text(task.title),
     );
 
+    final titleRow = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: openEditOnRowTap
+              ? title
+              : GestureDetector(onTap: onEdit, child: title),
+        ),
+        AnimatedSwitcher(
+          duration: _inboxStyleDuration,
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeOut,
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.92, end: 1).animate(animation),
+              child: child,
+            ),
+          ),
+          child: _showInboxUnorganizedStyle
+              ? Container(
+                  key: const ValueKey('inbox-unorganized-badge'),
+                  margin: const EdgeInsets.only(left: 8, top: 1),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _flowDoBlue.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '未整理',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: _flowDoBlue,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          height: 1.2,
+                        ),
+                  ),
+                )
+              : const SizedBox.shrink(key: ValueKey('inbox-organized-badge')),
+        ),
+      ],
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        openEditOnRowTap
-            ? title
-            : GestureDetector(onTap: onEdit, child: title),
+        titleRow,
         if (useMutedCompleted && task.completedAt != null) ...[
           const SizedBox(height: 4),
           Text(
@@ -715,6 +798,7 @@ class GroupedTaskList extends StatelessWidget {
       showMetaChips: showMetaChips,
       openEditOnRowTap: openEditOnRowTap,
       isCompletedList: isCompletedList,
+      isInboxList: isInboxList,
       enableInboxPromoteSwipe: isInboxList && onPromoteTask != null,
       onPromoteSwipe:
           isInboxList && onPromoteTask != null ? () => onPromoteTask!(task) : null,

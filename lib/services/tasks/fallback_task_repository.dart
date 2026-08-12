@@ -166,7 +166,7 @@ class AuthAwareTaskRepository implements TaskRepository {
   TaskRepository? _activeRepository;
   StreamSubscription<List<Task>>? _activeWatchSubscription;
   final StreamController<List<Task>> _tasksController =
-      StreamController<List<Task>>.broadcast(sync: true);
+      StreamController<List<Task>>.broadcast();
   bool _watchInitialized = false;
 
   /// ゲストからログインへ切り替える直前に呼び、次回認証成功時に移行する。

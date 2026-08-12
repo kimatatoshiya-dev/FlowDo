@@ -67,9 +67,10 @@ void main() {
       matching: find.byType(Dismissible),
     );
     expect(
-      find.descendant(of: taskTile, matching: find.text('仕事')),
+      find.descendant(of: taskTile, matching: find.text('未分類')),
       findsOneWidget,
     );
+    expect(find.text('未整理'), findsOneWidget);
     expect(
       find.descendant(of: taskTile, matching: find.text('☆なし')),
       findsOneWidget,
@@ -168,7 +169,7 @@ void main() {
 
     expect(find.text('1件をタスクリストへ移動しました'), findsOneWidget);
     expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
-    expect(find.text('整理する'), findsOneWidget);
+    expect(find.text('整理する'), findsNothing);
     expect(find.text('整理ボタン確認', skipOffstage: false), findsOneWidget);
 
     await drainFlowDoTimers(tester);
@@ -235,7 +236,7 @@ void main() {
     await drainFlowDoTimers(tester);
   });
 
-  testWidgets('未分類に変更しても次回登録の初期値は仕事のまま', (WidgetTester tester) async {
+  testWidgets('整理先バー未選択時は登録タスクが未分類になる', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() {
@@ -259,7 +260,7 @@ void main() {
     );
     final categoryChip = find.descendant(
       of: firstTile,
-      matching: find.text('仕事'),
+      matching: find.text('未分類'),
     );
     await tester.ensureVisible(categoryChip);
     await settleFlowDoUi(tester);
@@ -269,13 +270,13 @@ void main() {
     await tester.tap(
       find.descendant(
         of: find.byType(BottomSheet),
-        matching: find.text('未分類'),
+        matching: find.text('仕事'),
       ),
     );
     await tester.pump();
     await settleAfterDialogClosed(tester);
 
-    expect(find.text('未分類に設定しました'), findsOneWidget);
+    expect(find.text('仕事に設定しました'), findsOneWidget);
     expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
 
     await tester.enterText(
@@ -295,7 +296,7 @@ void main() {
     expect(
       find.descendant(
         of: secondTile,
-        matching: find.text('仕事', skipOffstage: false),
+        matching: find.text('未分類', skipOffstage: false),
       ),
       findsOneWidget,
     );

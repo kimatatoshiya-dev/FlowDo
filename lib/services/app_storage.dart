@@ -34,7 +34,6 @@ class AppStorage {
   static const _favoriteGuidanceSeenKey = 'flowdo_favorite_guidance_seen';
   static const _notificationPermissionPromptedKey =
       'flowdo_notification_permission_prompted';
-  static const _persistVerifyReportKey = 'flowdo_persist_verify_report';
   static const _maxPrefsAttempts = 20;
   static const _prefsRetryBaseDelay = Duration(milliseconds: 100);
   static const _ensureReadyTimeout = Duration(seconds: 30);
@@ -115,78 +114,6 @@ class AppStorage {
       );
     }
     return snapshot.tasks;
-  }
-
-  static Future<PersistedTaskSnapshot> readPersistedTaskSnapshot() async {
-    final ready = await ensureReady();
-    if (!ready) {
-      return const PersistedTaskSnapshot(
-        storageReady: false,
-        hadPersistedPayload: false,
-        taskCount: 0,
-        rawJson: '',
-      );
-    }
-
-    final prefs = _cachedPrefs;
-    if (prefs == null) {
-      return const PersistedTaskSnapshot(
-        storageReady: false,
-        hadPersistedPayload: false,
-        taskCount: 0,
-        rawJson: '',
-      );
-    }
-
-    final jsonString = prefs.getString(_tasksKey);
-    if (jsonString == null || jsonString.isEmpty) {
-      return const PersistedTaskSnapshot(
-        storageReady: true,
-        hadPersistedPayload: false,
-        taskCount: 0,
-        rawJson: '',
-      );
-    }
-
-    return PersistedTaskSnapshot(
-      storageReady: true,
-      hadPersistedPayload: true,
-      taskCount: _countTasksInJson(jsonString),
-      rawJson: jsonString,
-    );
-  }
-
-  @visibleForTesting
-  static Future<Map<String, dynamic>> loadPersistVerifyReport() async {
-    final ready = await ensureReady();
-    if (!ready) {
-      return <String, dynamic>{};
-    }
-    final prefs = _cachedPrefs;
-    final raw = prefs?.getString(_persistVerifyReportKey);
-    if (raw == null || raw.isEmpty) {
-      return <String, dynamic>{};
-    }
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is Map<String, dynamic>) {
-        return decoded;
-      }
-    } catch (_) {}
-    return <String, dynamic>{};
-  }
-
-  @visibleForTesting
-  static Future<void> savePersistVerifyReport(Map<String, dynamic> report) async {
-    final ready = await ensureReady();
-    if (!ready) {
-      return;
-    }
-    final prefs = _cachedPrefs;
-    if (prefs == null) {
-      return;
-    }
-    await prefs.setString(_persistVerifyReportKey, jsonEncode(report));
   }
 
   /// SharedPreferences を取得する。失敗時は null（例外は投げない）
@@ -800,18 +727,4 @@ class _TaskLoadSnapshot {
   final int? payloadBytes;
   final String? errorMessage;
   final String? rawJson;
-}
-
-class PersistedTaskSnapshot {
-  const PersistedTaskSnapshot({
-    required this.storageReady,
-    required this.hadPersistedPayload,
-    required this.taskCount,
-    required this.rawJson,
-  });
-
-  final bool storageReady;
-  final bool hadPersistedPayload;
-  final int taskCount;
-  final String rawJson;
 }

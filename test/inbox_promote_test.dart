@@ -38,7 +38,7 @@ void main() {
 
     final categoryChip = find.descendant(
       of: inboxTaskTile('設定テスト'),
-      matching: find.text('仕事'),
+      matching: find.text('未分類'),
     );
     await tester.ensureVisible(categoryChip);
     await settleFlowDoUi(tester);
@@ -51,13 +51,13 @@ void main() {
     await tester.tap(
       find.descendant(
         of: find.byType(BottomSheet),
-        matching: find.text('未分類'),
+        matching: find.text('仕事'),
       ),
     );
     await tester.pump();
     await settleAfterDialogClosed(tester);
 
-    expect(find.text('未分類に設定しました'), findsOneWidget);
+    expect(find.text('仕事に設定しました'), findsOneWidget);
     expect(find.text('リストへ移動中…'), findsNothing);
     expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
 
@@ -123,7 +123,7 @@ void main() {
 
     expect(find.text('1件をタスクリストへ移動しました'), findsOneWidget);
     expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
-    expect(find.text('整理する'), findsOneWidget);
+    expect(find.text('整理する'), findsNothing);
 
     final taskFinder = find.text('整理テスト', skipOffstage: false);
     await tester.ensureVisible(taskFinder);

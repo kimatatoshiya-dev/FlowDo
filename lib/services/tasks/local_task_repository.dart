@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../../models/task.dart';
+import '../../debug/flowdo_home_loop_diag.dart';
 import '../../debug/startup_trace.dart';
 import '../../debug/task_persistence_diag.dart';
 import '../app_storage.dart';
@@ -12,7 +13,7 @@ class LocalTaskRepository implements TaskRepository {
   LocalTaskRepository();
 
   final StreamController<List<Task>> _tasksController =
-      StreamController<List<Task>>.broadcast(sync: true);
+      StreamController<List<Task>>.broadcast();
 
   bool _hasSeededStream = false;
 
@@ -23,6 +24,7 @@ class LocalTaskRepository implements TaskRepository {
 
   @override
   Stream<List<Task>> watchTasks() async* {
+    FlowDoHomeLoopDiag.onWatchTasksEnter();
     startupTrace('LocalTaskRepository.watchTasks() entered');
     if (!_hasSeededStream) {
       _hasSeededStream = true;
@@ -44,6 +46,8 @@ class LocalTaskRepository implements TaskRepository {
     final ready = await AppStorage.ensureReady();
     if (!ready) {
       startupTrace('LocalTaskRepository.loadTasks() aborted', 'storage not ready');
+      // 未ロード状態を維持（memoryTaskCount=-1）。ensureReady 失敗時に空キャッシュを
+      // 立てないことで、後続の loadTasks が再試行できる。
       return const [];
     }
     final tasks = await AppStorage.loadTasks(

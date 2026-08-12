@@ -19,8 +19,8 @@ const kGuestModeEnabled = true;
 
 /// タスク通知（flutter_local_notifications）。
 ///
-/// 起動障害の切り分け用フラグ。lazy init + 安全 AppDelegate と組み合わせて利用。
-const kTaskNotificationsEnabled = false;
+/// lazy init + post-frame bootstrap で起動・保存パスと分離して利用する。
+const kTaskNotificationsEnabled = true;
 
 // 将来機能: カテゴリーフィルターでの複数グループ同時表示（今回は未実装）。
 

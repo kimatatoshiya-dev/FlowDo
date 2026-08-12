@@ -127,8 +127,10 @@ void expectAiOrganizeButtonHidden() {
 }
 
 /// 無料版では手動の「整理する」ボタンが表示されることを検証する。
-void expectManualOrganizeButtonVisible({int inboxCount = 0}) {
-  expect(find.text(inboxCount == 0 ? '整理する' : '$inboxCount件を整理する'), findsOneWidget);
+void expectManualOrganizeButtonVisible({required int inboxCount}) {
+  assert(inboxCount > 0, 'inboxCount must be > 0 when sticky organize CTA is shown');
+  expect(find.text('$inboxCount件を整理する'), findsOneWidget);
+  expect(find.byKey(const ValueKey('organize_tasks_button')), findsOneWidget);
 }
 
 /// 有料版向け: AI 整理ボタンの Finder。

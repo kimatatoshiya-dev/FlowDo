@@ -8,6 +8,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'app_bootstrap.dart';
 import 'config/app_features.dart';
+import 'debug/flowdo_home_loop_diag.dart';
 import 'debug/startup_trace.dart';
 import 'debug/task_persistence_diag.dart';
 import 'models/category_item.dart';
@@ -44,6 +45,9 @@ import 'widgets/category_name_dialog.dart';
 import 'widgets/calendar_day_task_sheet.dart';
 import 'widgets/home_dashboard.dart';
 import 'widgets/inbox_category_picker_sheet.dart';
+import 'widgets/inbox_organization_progress.dart';
+import 'widgets/flowdo_toast.dart';
+import 'widgets/organize_tasks_button.dart';
 import 'widgets/today_focus_task_sheet.dart';
 import 'widgets/task_add_sheet.dart';
 import 'widgets/task_due_datetime_sheet.dart';
@@ -51,6 +55,10 @@ import 'widgets/task_input_bar.dart';
 import 'widgets/task_tile.dart';
 
 Future<void> main() async {
+  startupProbe(
+    'build mode',
+    kReleaseMode ? 'release' : (kProfileMode ? 'profile' : 'debug'),
+  );
   startupProbe('① main() entered');
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
@@ -177,7 +185,7 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
         }
         unawaited(_restoreThemeMode());
         unawaited(_restoreFeedbackPreferences());
-        unawaited(_restoreNotificationPreferences());
+        unawaited(_bootstrapTaskNotifications());
         unawaited(_restoreCompletedTaskRetention());
         startupTrace('FlowDoApp.runAfterFirstFrame callback done');
       }),
@@ -261,14 +269,26 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _restoreNotificationPreferences() async {
+  /// 通知基盤の lazy init + 設定復元 + 初回権限確認。
+  /// bootstrapApp / タスク保存パスとは独立（post-frame のみ）。
+  Future<void> _bootstrapTaskNotifications() async {
+    if (!kTaskNotificationsEnabled) return;
+
     try {
+      await safeInitializeTaskNotifications(_taskNotificationService);
+
       final preferences = await AppStorage.loadNotificationPreferences();
       _taskNotificationService.updatePreferences(preferences);
-      if (!mounted || preferences == _notificationPreferences) return;
-      setState(() => _notificationPreferences = preferences);
+      if (mounted && preferences != _notificationPreferences) {
+        setState(() => _notificationPreferences = preferences);
+      }
+
+      if (preferences.enabled &&
+          await AppStorage.consumeNotificationPermissionPrompt()) {
+        await _taskNotificationService.requestPermissions();
+      }
     } catch (error, stack) {
-      debugPrint('Notification preferences restore failed: $error');
+      debugPrint('Task notification bootstrap failed: $error');
       debugPrint(stack.toString());
     }
   }
@@ -430,7 +450,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   final TextEditingController _inputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _inputSectionKey = GlobalKey();
-  final GlobalKey _inboxSectionKey = GlobalKey();
+  final GlobalKey _recentTasksAnchorKey = GlobalKey();
   final GlobalKey<TaskInputBarState> _taskInputBarKey = GlobalKey();
   bool _isLoading = true;
   bool _inputFocused = false;
@@ -466,11 +486,14 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   Timer? _keyboardScrollTimer;
   bool _isScrollingToInput = false;
   StreamSubscription<List<Task>>? _taskSubscription;
+  bool _isApplyingRepositorySnapshot = false;
+  bool _suppressRepositoryStreamHandling = false;
   Timer? _loadingFallbackTimer;
   late final ValueNotifier<int> _todayFocusSheetRevision;
   final TodayFocusCompletionMessages _todayFocusCompletionMessages =
       TodayFocusCompletionMessages();
   int? _pendingTodayFocusCelebrationTaskId;
+  Set<int>? _inboxOrganizationCelebratedIds;
 
   @override
   void initState() {
@@ -478,18 +501,10 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     super.initState();
     startupProbe('⑥ FlowDoHomePage.initState()');
     startupTrace('FlowDoHomePage.initState');
+    FlowDoHomeLoopDiag.startIfNeeded();
     WidgetsBinding.instance.addObserver(this);
     unawaited(widget.analyticsService.logScreenView(AnalyticsScreen.home));
-    _taskSubscription = widget.taskRepository.watchTasks().listen(
-      _onWatchTaskSnapshot,
-      onError: (Object error, StackTrace stackTrace) {
-        startupTrace('FlowDoHomePage.watchTasks onError', error);
-        debugPrint('Task stream failed: $error');
-        debugPrint(stackTrace.toString());
-        if (!mounted) return;
-        setState(() => _isLoading = false);
-      },
-    );
+    _bindTaskRepositoryStream();
     _loadingFallbackTimer = Timer(const Duration(seconds: 8), () {
       if (!mounted || !_isLoading) return;
       startupProbe('⑥ FlowDoHomePage loading timeout fallback');
@@ -504,9 +519,37 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     );
   }
 
+  /// watchTasks() は initState で 1 回だけ bind する（didUpdateWidget で repository が
+  /// 変わった場合のみ再 bind）。常に先に cancel してから listen し、同時に 1 本だけ保持する。
+  void _bindTaskRepositoryStream() {
+    _cancelTaskRepositoryStream();
+    startupTrace('FlowDoHomePage.bind task stream subscription');
+    _taskSubscription = widget.taskRepository.watchTasks().listen(
+      _onWatchTaskSnapshot,
+      onError: (Object error, StackTrace stackTrace) {
+        startupTrace('FlowDoHomePage.watchTasks onError', error);
+        debugPrint('Task stream failed: $error');
+        debugPrint(stackTrace.toString());
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+      },
+    );
+  }
+
+  void _cancelTaskRepositoryStream() {
+    final subscription = _taskSubscription;
+    if (subscription == null) return;
+    startupTrace('FlowDoHomePage.cancel task stream subscription');
+    unawaited(subscription.cancel());
+    _taskSubscription = null;
+  }
+
   @override
   void didUpdateWidget(covariant FlowDoHomePage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.taskRepository, widget.taskRepository)) {
+      _bindTaskRepositoryStream();
+    }
     if (oldWidget.completedTaskRetention != widget.completedTaskRetention) {
       unawaited(_purgeExpiredCompletedTasks());
     }
@@ -514,7 +557,9 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       widget.taskNotificationService.updatePreferences(
         widget.notificationPreferences,
       );
-      unawaited(widget.taskNotificationService.syncTasks(_tasks));
+      if (kTaskNotificationsEnabled) {
+        unawaited(widget.taskNotificationService.syncTasks(_tasks));
+      }
     }
   }
 
@@ -540,9 +585,12 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
 
   @override
   void dispose() {
+    startupProbe('⑥ FlowDoHomePage.dispose()');
+    startupTrace('FlowDoHomePage.dispose');
+    FlowDoHomeLoopDiag.stop();
     WidgetsBinding.instance.removeObserver(this);
     _loadingFallbackTimer?.cancel();
-    _taskSubscription?.cancel();
+    _cancelTaskRepositoryStream();
     _keyboardScrollTimer?.cancel();
     _layoutChangeTimer?.cancel();
     _scrollController.dispose();
@@ -713,57 +761,43 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       );
   }
 
-  String _organizeButtonLabel(int inboxCount) {
-    if (inboxCount == 0) return '整理する';
-    return '$inboxCount件を整理する';
-  }
 
-  Future<void> _scrollToInboxSection({bool showFeedback = false}) async {
+  Future<void> _scrollToRecentlyAddedTasks() async {
     _taskInputBarKey.currentState?.unfocus();
     FocusManager.instance.primaryFocus?.unfocus();
 
     await Future<void>.delayed(const Duration(milliseconds: 120));
     if (!mounted) return;
 
-    final targetContext = _inboxSectionKey.currentContext;
-    if (targetContext != null && _scrollController.hasClients) {
-      final renderObject = targetContext.findRenderObject();
-      if (renderObject != null) {
-        final viewport = RenderAbstractViewport.maybeOf(renderObject);
-        if (viewport != null) {
-          final targetOffset = viewport
-              .getOffsetToReveal(renderObject, 0.06)
-              .offset
-              .clamp(
-                _scrollController.position.minScrollExtent,
-                _scrollController.position.maxScrollExtent,
-              );
-          await _scrollController.animateTo(
-            targetOffset,
-            duration: const Duration(milliseconds: 450),
-            curve: Curves.easeOutCubic,
+    final targetContext = _recentTasksAnchorKey.currentContext;
+    if (targetContext == null || !_scrollController.hasClients) return;
+
+    final renderObject = targetContext.findRenderObject();
+    if (renderObject == null) return;
+
+    final viewport = RenderAbstractViewport.maybeOf(renderObject);
+    if (viewport != null) {
+      final targetOffset = viewport
+          .getOffsetToReveal(renderObject, 0.08)
+          .offset
+          .clamp(
+            _scrollController.position.minScrollExtent,
+            _scrollController.position.maxScrollExtent,
           );
-        } else {
-          await Scrollable.ensureVisible(
-            targetContext,
-            duration: const Duration(milliseconds: 450),
-            curve: Curves.easeOutCubic,
-            alignment: 0.06,
-          );
-        }
-      }
+      await _scrollController.animateTo(
+        targetOffset,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOutCubic,
+      );
+      return;
     }
 
-    if (!mounted || !showFeedback) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(
-          content: Text('追加したタスクを整理しましょう'),
-          duration: Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+    await Scrollable.ensureVisible(
+      targetContext,
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeOutCubic,
+      alignment: 0.08,
+    );
   }
 
   void _maybeShowFavoriteGuidance() {
@@ -955,6 +989,8 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       _pendingFavoriteByTaskId.containsKey(taskId);
 
   void _onWatchTaskSnapshot(List<Task> tasks) {
+    FlowDoHomeLoopDiag.onWatchEvent();
+    if (_suppressRepositoryStreamHandling) return;
     startupTrace(
       'FlowDoHomePage.watchTasks snapshot',
       '${tasks.length} task(s)',
@@ -962,88 +998,121 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     _applyTasksFromRepository(tasks);
   }
 
+  bool _taskListsEquivalent(List<Task> current, List<Task> next) {
+    if (current.length != next.length) return false;
+    for (var i = 0; i < current.length; i++) {
+      final a = current[i];
+      final b = next[i];
+      if (a.id != b.id ||
+          a.title != b.title ||
+          a.isCompleted != b.isCompleted ||
+          a.isInbox != b.isInbox ||
+          a.categoryId != b.categoryId ||
+          a.isFavorite != b.isFavorite ||
+          a.priorityStars != b.priorityStars ||
+          a.dueDate != b.dueDate ||
+          a.reminderTime != b.reminderTime ||
+          a.completedAt != b.completedAt ||
+          a.pinnedAt != b.pinnedAt) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   void _applyTasksFromRepository(List<Task> tasks) {
-    startupTrace('_applyTasksFromRepository', '${tasks.length} task(s)');
-    if (!mounted) return;
+    FlowDoHomeLoopDiag.onApply();
+    if (!mounted || _isApplyingRepositorySnapshot) return;
+    _isApplyingRepositorySnapshot = true;
+    try {
+      startupTrace('_applyTasksFromRepository', '${tasks.length} task(s)');
+      if (_isLoading) {
+        startupTrace(
+          'FlowDoHomePage initial task restore',
+          '${tasks.length} task(s) from repository',
+        );
+      }
 
-    if (_isLoading) {
-      startupTrace(
-        'FlowDoHomePage initial task restore',
-        '${tasks.length} task(s) from repository',
+      CompletedTaskCleanup.backfillCompletionTimestamps(tasks);
+      final retainedTasks = CompletedTaskCleanup.filterExpired(
+        tasks,
+        widget.completedTaskRetention,
       );
-    }
 
-    CompletedTaskCleanup.backfillCompletionTimestamps(tasks);
-    final retainedTasks = CompletedTaskCleanup.filterExpired(
-      tasks,
-      widget.completedTaskRetention,
-    );
+      final existingById = {for (final task in _tasks) task.id: task};
+      final remoteIds = {for (final task in retainedTasks) task.id};
+      final mergedById = {
+        for (final remote in retainedTasks)
+          remote.id: _mergeTaskFromRemote(
+            remote: remote,
+            existing: existingById[remote.id],
+          ),
+      };
 
-    final existingById = {for (final task in _tasks) task.id: task};
-    final remoteIds = {for (final task in retainedTasks) task.id};
-    final mergedById = {
-      for (final remote in retainedTasks)
-        remote.id: _mergeTaskFromRemote(
-          remote: remote,
-          existing: existingById[remote.id],
-        ),
-    };
+      final wasLoading = _isLoading;
+      final updatedTasks = <Task>[];
 
-    final wasLoading = _isLoading;
-    final updatedTasks = <Task>[];
-
-    if (wasLoading || _tasks.isEmpty) {
-      updatedTasks.addAll([
-        for (final remote in retainedTasks) mergedById[remote.id]!,
-      ]);
-    } else {
-      final seen = <int>{};
-      for (final task in _tasks) {
-        final merged = mergedById[task.id];
-        if (merged != null) {
-          updatedTasks.add(merged);
-          seen.add(task.id);
-        } else if (!remoteIds.contains(task.id)) {
-          updatedTasks.add(task);
-          seen.add(task.id);
+      if (wasLoading || _tasks.isEmpty) {
+        updatedTasks.addAll([
+          for (final remote in retainedTasks) mergedById[remote.id]!,
+        ]);
+      } else {
+        final seen = <int>{};
+        for (final task in _tasks) {
+          final merged = mergedById[task.id];
+          if (merged != null) {
+            updatedTasks.add(merged);
+            seen.add(task.id);
+          } else if (!remoteIds.contains(task.id)) {
+            updatedTasks.add(task);
+            seen.add(task.id);
+          }
+        }
+        for (final remote in retainedTasks) {
+          if (!seen.contains(remote.id)) {
+            updatedTasks.add(mergedById[remote.id]!);
+          }
         }
       }
-      for (final remote in retainedTasks) {
-        if (!seen.contains(remote.id)) {
-          updatedTasks.add(mergedById[remote.id]!);
-        }
+
+      logDiagBeforeUiApply(
+        repositoryTaskCount: tasks.length,
+        homePageTaskCountBefore: _tasks.length,
+        retainedTaskCount: retainedTasks.length,
+        homePageTaskCountAfter: updatedTasks.length,
+        isInitialLoad: wasLoading,
+      );
+
+      if (!wasLoading && _taskListsEquivalent(_tasks, updatedTasks)) {
+        return;
       }
-    }
 
-    logDiagBeforeUiApply(
-      repositoryTaskCount: tasks.length,
-      homePageTaskCountBefore: _tasks.length,
-      retainedTaskCount: retainedTasks.length,
-      homePageTaskCountAfter: updatedTasks.length,
-      isInitialLoad: wasLoading,
-    );
+      setState(() {
+        _tasks
+          ..clear()
+          ..addAll(updatedTasks);
+        _isLoading = false;
+      });
 
-    setState(() {
-      _tasks
-        ..clear()
-        ..addAll(updatedTasks);
-      _isLoading = false;
-    });
+      if (retainedTasks.length != tasks.length) {
+        unawaited(_syncFilteredTasksToRepository(updatedTasks));
+      }
 
-    if (retainedTasks.length != tasks.length) {
-      unawaited(widget.taskRepository.syncTasks(_tasks));
-    }
+      widget.taskNotificationService.updatePreferences(
+        widget.notificationPreferences,
+      );
+      if (kTaskNotificationsEnabled) {
+        unawaited(widget.taskNotificationService.syncTasks(_tasks));
+      }
 
-    widget.taskNotificationService.updatePreferences(
-      widget.notificationPreferences,
-    );
-    unawaited(widget.taskNotificationService.syncTasks(_tasks));
-
-    if (wasLoading &&
-        _showFavoriteGuidance &&
-        !_showInboxGuidance &&
-        _tasks.any((task) => !task.isInbox && !task.isCompleted)) {
-      _maybeShowFavoriteGuidance();
+      if (wasLoading &&
+          _showFavoriteGuidance &&
+          !_showInboxGuidance &&
+          _tasks.any((task) => !task.isInbox && !task.isCompleted)) {
+        _maybeShowFavoriteGuidance();
+      }
+    } finally {
+      _isApplyingRepositorySnapshot = false;
     }
   }
 
@@ -1262,19 +1331,68 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     );
   }
 
+  Future<void> _syncFilteredTasksToRepository(List<Task> tasks) async {
+    _suppressRepositoryStreamHandling = true;
+    try {
+      await widget.taskRepository.syncTasks(tasks);
+    } catch (error, stack) {
+      debugPrint('Failed to sync filtered tasks: $error');
+      debugPrint(stack.toString());
+    } finally {
+      _suppressRepositoryStreamHandling = false;
+    }
+  }
+
+  void _checkInboxOrganizationComplete() {
+    final recentTasks = _recentlyAddedTasks();
+    if (recentTasks.isEmpty) {
+      _inboxOrganizationCelebratedIds = null;
+      return;
+    }
+
+    final batchIds = recentTasks.map((task) => task.id).toSet();
+    final organizedCount =
+        recentTasks.where((task) => !task.isInboxUnorganized).length;
+    if (organizedCount < recentTasks.length) {
+      if (_inboxOrganizationCelebratedIds != null &&
+          !_inboxOrganizationCelebratedIds!.containsAll(batchIds)) {
+        _inboxOrganizationCelebratedIds = null;
+      }
+      return;
+    }
+
+    if (_inboxOrganizationCelebratedIds != null &&
+        _inboxOrganizationCelebratedIds!.length == batchIds.length &&
+        _inboxOrganizationCelebratedIds!.containsAll(batchIds)) {
+      return;
+    }
+
+    _inboxOrganizationCelebratedIds = batchIds;
+    FlowDoToast.show(context, '✨ 頭の中が整理できました。');
+  }
+
   Future<void> _updateTasks(VoidCallback update) async {
     if (!mounted) return;
     setState(update);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _checkInboxOrganizationComplete();
+    });
     _refreshTodayFocusSheet();
     try {
       widget.taskNotificationService.updatePreferences(
         widget.notificationPreferences,
       );
+      _suppressRepositoryStreamHandling = true;
       await widget.taskRepository.syncTasks(_tasks);
-      await widget.taskNotificationService.syncTasks(_tasks);
+      if (kTaskNotificationsEnabled) {
+        await widget.taskNotificationService.syncTasks(_tasks);
+      }
     } catch (error, stack) {
       debugPrint('Failed to save tasks: $error');
       debugPrint(stack.toString());
+    } finally {
+      _suppressRepositoryStreamHandling = false;
     }
   }
 
@@ -1430,10 +1548,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     if (_inboxSelectedCategoryIds.length == 1) {
       return _inboxSelectedCategoryIds.first;
     }
-    return resolveRegistrationCategoryId(
-      lastUsedId: _lastRegistrationCategoryId,
-      categories: _categories,
-    );
+    return CategoryItem.uncategorizedId;
   }
 
   Future<void> _rememberLastRegistrationCategory(String categoryId) async {
@@ -1455,9 +1570,15 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         _tasks.insert(0, task);
       }
     });
-    await _rememberLastRegistrationCategory(categoryId);
+    if (categoryId != CategoryItem.uncategorizedId) {
+      await _rememberLastRegistrationCategory(categoryId);
+    }
+    _inboxOrganizationCelebratedIds = null;
 
     if (registeredIds.isNotEmpty) {
+      final count = registeredIds.length;
+      FlowDoToast.show(context, '✅ $count件追加しました');
+
       _registrationFeedbackTaskIds.addAll(registeredIds);
       Future<void>.delayed(_registrationFeedbackDuration, () {
         if (!mounted) return;
@@ -1471,10 +1592,10 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     _taskInputBarKey.currentState?.unfocus();
     unawaited(_markInputGuidanceSeenIfNeeded());
     setState(() {});
-    if (_showInboxGuidance && registeredIds.isNotEmpty) {
+    if (registeredIds.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        unawaited(_scrollToInboxSection());
+        unawaited(_scrollToRecentlyAddedTasks());
       });
     }
     unawaited(widget.feedbackService.play(FeedbackEvent.taskRegistered));
@@ -2117,6 +2238,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
 
   @override
   Widget build(BuildContext context) {
+    FlowDoHomeLoopDiag.onBuild();
     startupProbe('⑥ FlowDoHomePage.build()', '_isLoading=$_isLoading');
     startupTrace('FlowDoHomePage.build', '_isLoading=$_isLoading');
     final colors = Theme.of(context).extension<FlowDoColors>()!;
@@ -2130,22 +2252,25 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         completedTasks.isNotEmpty;
     final showNoResults =
         !_isLoading && _tasks.isNotEmpty && !hasVisibleTasks && hasFilter;
-    final showOrganizeButton = kAiOrganizeEnabled &&
-        !_isLoading &&
-        !_isOrganizing &&
-        recentTasks.isNotEmpty;
-    final showManualOrganizeButton = !kAiOrganizeEnabled && !_isLoading;
+    final showStickyOrganizeCta = !_isLoading &&
+        recentTasks.isNotEmpty &&
+        !_isOrganizing;
     final inboxCount = recentTasks.length;
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      bottomNavigationBar: showOrganizeButton
+      bottomNavigationBar: showStickyOrganizeCta
           ? SafeArea(
-              minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: FilledButton(
-                onPressed: _isOrganizing ? null : _organizeRecentTasks,
-                child: const Text('✨ AIで整理する'),
-              ),
+              minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: kAiOrganizeEnabled
+                  ? FilledButton(
+                      onPressed: _organizeRecentTasks,
+                      child: const Text('✨ AIで整理する'),
+                    )
+                  : OrganizeTasksButton(
+                      count: inboxCount,
+                      onPressed: _onOrganizeButtonPressed,
+                    ),
             )
           : null,
       body: SafeArea(
@@ -2186,7 +2311,6 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                   ),
                   if (!_isLoading)
                     SliverToBoxAdapter(
-                      key: _inboxSectionKey,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -2208,6 +2332,13 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                             const Padding(
                               padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
                               child: InboxGuidanceBanner(),
+                            ),
+                          if (recentTasks.isNotEmpty)
+                            InboxOrganizationProgress(
+                              organizedCount: recentTasks
+                                  .where((task) => !task.isInboxUnorganized)
+                                  .length,
+                              totalCount: recentTasks.length,
                             ),
                           Padding(
                             padding: EdgeInsets.fromLTRB(
@@ -2253,43 +2384,38 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                             onRename: _renameCategory,
                             onDelete: _deleteCategory,
                           ),
-                          if (recentTasks.isNotEmpty)
-                            GroupedTaskList(
-                              title: '追加したタスク',
-                              tasks: recentTasks,
-                              categories: _categories,
-                              showCompletedStyle: _showsCompletedStyle,
-                              isRemoving: _isOrganizingTask,
-                              isRegistrationFeedback: _isRegistrationFeedback,
-                              showCompletionToggle: false,
-                              openEditOnRowTap: true,
-                              onToggle: _toggleTask,
-                              onEdit: _showEditTaskSheet,
-                              onDelete: _confirmDeleteTask,
-                              onDismissDelete: _deleteTask,
-                              onCategoryTap: _showInboxCategoryPicker,
-                              onPriorityTap: _cyclePriority,
-                              onDueDateTap: _pickDueDate,
-                              onFavoriteTap: _togglePin,
-                              enablePinnedReorder: true,
-                              onPinnedReorder: (reordered) =>
-                                  _reorderPinnedTasks(
-                                reordered,
-                                isInbox: true,
-                              ),
-                              isInboxList: true,
-                              showSectionTitle: false,
-                            ),
-                          if (showManualOrganizeButton)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                              child: FilledButton.tonal(
-                                onPressed: inboxCount == 0
-                                    ? null
-                                    : _onOrganizeButtonPressed,
-                                child: Text(_organizeButtonLabel(inboxCount)),
-                              ),
-                            ),
+                          KeyedSubtree(
+                            key: _recentTasksAnchorKey,
+                            child: recentTasks.isNotEmpty
+                                ? GroupedTaskList(
+                                    title: '追加したタスク',
+                                    tasks: recentTasks,
+                                    categories: _categories,
+                                    showCompletedStyle: _showsCompletedStyle,
+                                    isRemoving: _isOrganizingTask,
+                                    isRegistrationFeedback:
+                                        _isRegistrationFeedback,
+                                    showCompletionToggle: false,
+                                    openEditOnRowTap: true,
+                                    onToggle: _toggleTask,
+                                    onEdit: _showEditTaskSheet,
+                                    onDelete: _confirmDeleteTask,
+                                    onDismissDelete: _deleteTask,
+                                    onCategoryTap: _showInboxCategoryPicker,
+                                    onPriorityTap: _cyclePriority,
+                                    onDueDateTap: _pickDueDate,
+                                    onFavoriteTap: _togglePin,
+                                    enablePinnedReorder: true,
+                                    onPinnedReorder: (reordered) =>
+                                        _reorderPinnedTasks(
+                                      reordered,
+                                      isInbox: true,
+                                    ),
+                                    isInboxList: true,
+                                    showSectionTitle: false,
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
                         ],
                       ),
                     ),
@@ -2418,7 +2544,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                       ),
                   ],
                   SliverToBoxAdapter(
-                    child: SizedBox(height: showOrganizeButton ? 8 : 24),
+                    child: SizedBox(height: showStickyOrganizeCta ? 8 : 24),
                   ),
                 ],
               ),

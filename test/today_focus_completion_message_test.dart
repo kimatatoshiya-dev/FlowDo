@@ -62,7 +62,7 @@ Finder _taskCheckbox(String title) {
       of: find.text(title, skipOffstage: false),
       matching: find.byType(Dismissible),
     ),
-    matching: find.byType(AnimatedContainer),
+    matching: find.byKey(const ValueKey('task_completion_checkbox')),
   );
 }
 

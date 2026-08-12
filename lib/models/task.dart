@@ -89,6 +89,14 @@ class Task {
     return title.toLowerCase().contains(query.toLowerCase());
   }
 
+  /// Inbox 内で未整理か（カテゴリー・期限・時間・📌 すべて未設定）
+  bool get isInboxUnorganized {
+    if (!isInbox) return false;
+    if (isFavorite || pinnedAt != null) return false;
+    if (dueDate != null || reminderTime != null) return false;
+    return categoryId == CategoryItem.uncategorizedId;
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'title': title,
