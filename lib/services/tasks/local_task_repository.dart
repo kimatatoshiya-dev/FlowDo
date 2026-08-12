@@ -63,6 +63,7 @@ class LocalTaskRepository implements TaskRepository {
         ..categoryId = task.categoryId
         ..priorityStars = task.priorityStars
         ..dueDate = task.dueDate
+        ..reminderTime = task.reminderTime
         ..completedAt = task.completedAt
         ..isFavorite = task.isFavorite
         ..pinnedAt = task.pinnedAt;

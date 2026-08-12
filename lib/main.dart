@@ -18,6 +18,7 @@ import 'models/today_focus.dart';
 import 'models/today_focus_completion_message.dart';
 import 'models/completed_task_retention.dart';
 import 'models/feedback_preferences.dart';
+import 'models/notification_preferences.dart';
 import 'screens/settings_page.dart';
 import 'services/app_storage.dart';
 import 'services/auth/auth_service.dart';
@@ -26,6 +27,7 @@ import 'services/analytics/analytics_service.dart';
 import 'services/crash_reporting.dart'
     show installStartupErrorHandlers, reportZonedError;
 import 'services/feedback_service.dart';
+import 'services/task_notification_service.dart';
 import 'services/ai_categorizer_service.dart';
 import 'services/task_organizer_service.dart';
 import 'services/tasks/task_repository.dart';
@@ -38,6 +40,7 @@ import 'widgets/home_dashboard.dart';
 import 'widgets/inbox_category_picker_sheet.dart';
 import 'widgets/today_focus_task_sheet.dart';
 import 'widgets/task_add_sheet.dart';
+import 'widgets/task_due_datetime_sheet.dart';
 import 'widgets/task_input_bar.dart';
 import 'widgets/task_tile.dart';
 
@@ -117,11 +120,13 @@ class FlowDoApp extends StatefulWidget {
     required this.analyticsService,
     required this.authService,
     required this.taskRepository,
+    this.taskNotificationService,
   });
 
   final AnalyticsService analyticsService;
   final AuthService authService;
   final TaskRepository taskRepository;
+  final TaskNotificationService? taskNotificationService;
 
   @override
   State<FlowDoApp> createState() => _FlowDoAppState();
@@ -130,15 +135,21 @@ class FlowDoApp extends StatefulWidget {
 class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
   ThemeMode _themeMode = ThemeMode.system;
   FeedbackPreferences _feedbackPreferences = FeedbackPreferences.defaults;
+  NotificationPreferences _notificationPreferences =
+      NotificationPreferences.defaults;
   CompletedTaskRetention _completedTaskRetention =
       CompletedTaskRetention.defaults;
   final FeedbackService _feedbackService = NativeFeedbackService();
+  late final TaskNotificationService _taskNotificationService;
   DateTime? _sessionStartedAt;
 
   @override
   void initState() {
     super.initState();
     startupTrace('FlowDoApp.initState');
+    _taskNotificationService =
+        widget.taskNotificationService ?? NativeTaskNotificationService();
+    unawaited(_taskNotificationService.initialize());
     WidgetsBinding.instance.addObserver(this);
     _sessionStartedAt = DateTime.now();
     unawaited(widget.analyticsService.logAppOpen());
@@ -153,6 +164,7 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
         await Future.wait([
           _restoreThemeMode(),
           _restoreFeedbackPreferences(),
+          _restoreNotificationPreferences(),
           _restoreCompletedTaskRetention(),
         ]);
         startupTrace('FlowDoApp.runAfterFirstFrame callback done');
@@ -237,6 +249,38 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _restoreNotificationPreferences() async {
+    try {
+      final preferences = await AppStorage.loadNotificationPreferences();
+      _taskNotificationService.updatePreferences(preferences);
+      if (!mounted || preferences == _notificationPreferences) return;
+      setState(() => _notificationPreferences = preferences);
+    } catch (error, stack) {
+      debugPrint('Notification preferences restore failed: $error');
+      debugPrint(stack.toString());
+    }
+  }
+
+  Future<void> _setNotificationPreferences(
+    NotificationPreferences preferences,
+  ) async {
+    final previous = _notificationPreferences;
+    if (preferences == previous) return;
+
+    if (preferences.enabled && !previous.enabled) {
+      unawaited(_taskNotificationService.requestPermissions());
+    }
+
+    _taskNotificationService.updatePreferences(preferences);
+    setState(() => _notificationPreferences = preferences);
+    try {
+      await AppStorage.saveNotificationPreferences(preferences);
+    } catch (error, stack) {
+      debugPrint('Failed to save notification preferences: $error');
+      debugPrint(stack.toString());
+    }
+  }
+
   Future<void> _restoreCompletedTaskRetention() async {
     try {
       final retention = await AppStorage.loadCompletedTaskRetention();
@@ -266,6 +310,7 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _logSessionDuration();
     unawaited(_feedbackService.dispose());
+    unawaited(_taskNotificationService.dispose());
     super.dispose();
   }
 
@@ -306,6 +351,9 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
           feedbackService: _feedbackService,
           feedbackPreferences: _feedbackPreferences,
           onFeedbackPreferencesChanged: _setFeedbackPreferences,
+          taskNotificationService: _taskNotificationService,
+          notificationPreferences: _notificationPreferences,
+          onNotificationPreferencesChanged: _setNotificationPreferences,
           completedTaskRetention: _completedTaskRetention,
           onCompletedTaskRetentionChanged: _setCompletedTaskRetention,
           analyticsService: widget.analyticsService,
@@ -325,6 +373,9 @@ class FlowDoHomePage extends StatefulWidget {
     required this.feedbackService,
     required this.feedbackPreferences,
     required this.onFeedbackPreferencesChanged,
+    required this.taskNotificationService,
+    required this.notificationPreferences,
+    required this.onNotificationPreferencesChanged,
     required this.completedTaskRetention,
     required this.onCompletedTaskRetentionChanged,
     required this.analyticsService,
@@ -337,6 +388,9 @@ class FlowDoHomePage extends StatefulWidget {
   final FeedbackService feedbackService;
   final FeedbackPreferences feedbackPreferences;
   final ValueChanged<FeedbackPreferences> onFeedbackPreferencesChanged;
+  final TaskNotificationService taskNotificationService;
+  final NotificationPreferences notificationPreferences;
+  final ValueChanged<NotificationPreferences> onNotificationPreferencesChanged;
   final CompletedTaskRetention completedTaskRetention;
   final ValueChanged<CompletedTaskRetention> onCompletedTaskRetentionChanged;
   final AnalyticsService analyticsService;
@@ -430,6 +484,12 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.completedTaskRetention != widget.completedTaskRetention) {
       unawaited(_purgeExpiredCompletedTasks());
+    }
+    if (oldWidget.notificationPreferences != widget.notificationPreferences) {
+      widget.taskNotificationService.updatePreferences(
+        widget.notificationPreferences,
+      );
+      unawaited(widget.taskNotificationService.syncTasks(_tasks));
     }
   }
 
@@ -920,6 +980,8 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       unawaited(widget.taskRepository.syncTasks(_tasks));
     }
 
+    unawaited(widget.taskNotificationService.syncTasks(_tasks));
+
     if (wasLoading &&
         _showFavoriteGuidance &&
         !_showInboxGuidance &&
@@ -952,6 +1014,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       ..categoryId = remote.categoryId
       ..priorityStars = remote.priorityStars
       ..dueDate = remote.dueDate
+      ..reminderTime = remote.reminderTime
       ..completedAt = remote.completedAt;
 
     // Firestore snapshot must not overwrite isFavorite while an update is pending.
@@ -1036,6 +1099,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     _refreshTodayFocusSheet();
     try {
       await widget.taskRepository.syncTasks(_tasks);
+      await widget.taskNotificationService.syncTasks(_tasks);
     } catch (error, stack) {
       debugPrint('Failed to save tasks: $error');
       debugPrint(stack.toString());
@@ -1660,33 +1724,55 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   }
 
   Future<void> _pickDueDate(Task task) async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: task.dueDate ?? now,
-      firstDate: now.subtract(const Duration(days: 365)),
-      lastDate: now.add(const Duration(days: 365 * 5)),
-    );
-    if (!mounted) return;
+    await TaskDueDateTimeSheet.show(
+      context,
+      dueDate: task.dueDate,
+      reminderTime: task.reminderTime,
+      onPickDate: () async {
+        final now = DateTime.now();
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: task.dueDate ?? now,
+          firstDate: now.subtract(const Duration(days: 365)),
+          lastDate: now.add(const Duration(days: 365 * 5)),
+        );
+        if (!mounted || picked == null) return;
 
-    if (picked != null) {
-      final today = DateTime(now.year, now.month, now.day);
-      final due = DateTime(picked.year, picked.month, picked.day);
-      final daysUntilDue = due.difference(today).inDays;
-      await _updateTasks(() => task.dueDate = picked);
-      unawaited(
-        widget.analyticsService.logDeadlineSet(daysUntilDue: daysUntilDue),
-      );
-      if (task.isInbox) return;
-      _scheduleDeferredLayout(
-        taskId: task.id,
-        sortMode: TaskSortMode.dueDate,
-      );
-    }
+        final today = DateTime(now.year, now.month, now.day);
+        final due = DateTime(picked.year, picked.month, picked.day);
+        final daysUntilDue = due.difference(today).inDays;
+        await _updateTasks(() {
+          task.dueDate = due;
+        });
+        unawaited(
+          widget.analyticsService.logDeadlineSet(daysUntilDue: daysUntilDue),
+        );
+        if (task.isInbox) return;
+        _scheduleDeferredLayout(
+          taskId: task.id,
+          sortMode: TaskSortMode.dueDate,
+        );
+      },
+      onPickTime: () async {
+        if (task.dueDate == null) return;
+        final picked = await showTimePicker(
+          context: context,
+          initialTime: task.reminderTime ?? TimeOfDay.now(),
+        );
+        if (!mounted || picked == null) return;
+
+        await _updateTasks(() => task.reminderTime = picked);
+      },
+      onClearTime: () async {
+        if (task.reminderTime == null) return;
+        await _updateTasks(() => task.reminderTime = null);
+      },
+    );
   }
 
   Future<void> _deleteTask(Task task) async {
     _cancelCompletion(task.id);
+    unawaited(widget.taskNotificationService.cancelTask(task.id));
     await _updateTasks(() {
       _tasks.removeWhere((t) => t.id == task.id);
     });
@@ -1730,6 +1816,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     }
 
     if (!task.isCompleted) {
+      unawaited(widget.taskNotificationService.cancelTask(task.id));
       final todayFocusEntries =
           flattenTodayFocusSections(_todayFocusSections);
       if (isLastRemainingTodayFocusTask(todayFocusEntries, task.id)) {
@@ -1761,6 +1848,9 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
           onThemeModeChanged: widget.onThemeModeChanged,
           feedbackPreferences: widget.feedbackPreferences,
           onFeedbackPreferencesChanged: widget.onFeedbackPreferencesChanged,
+          notificationPreferences: widget.notificationPreferences,
+          onNotificationPreferencesChanged:
+              widget.onNotificationPreferencesChanged,
           completedTaskRetention: widget.completedTaskRetention,
           onCompletedTaskRetentionChanged:
               widget.onCompletedTaskRetentionChanged,
@@ -1967,7 +2057,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                     ),
                   SliverToBoxAdapter(
                     child: HomeDashboard(
-                      calendarData: buildFlowDoCalendarMonth(tasks: _tasks),
+                      tasks: _tasks,
                       onCalendarDayTap: _showCalendarDaySheet,
                       onOpenTodayFocusSheet: _showTodayFocusTaskSheet,
                       categoryCounts: _categoryIncompleteCounts,

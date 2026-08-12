@@ -1,3 +1,6 @@
+import 'package:flutter/material.dart';
+
+import '../utils/japanese_holidays.dart';
 import 'task.dart';
 
 /// カレンダー上のタスク種別
@@ -13,11 +16,13 @@ class FlowDoCalendarTaskEntry {
     required this.taskId,
     required this.title,
     required this.kind,
+    this.reminderTime,
   });
 
   final int taskId;
   final String title;
   final FlowDoCalendarTaskKind kind;
+  final TimeOfDay? reminderTime;
 }
 
 /// カレンダー上部の件数サマリー
@@ -196,8 +201,15 @@ List<FlowDoCalendarTaskEntry> calendarTasksForDay({
         taskId: task.id,
         title: task.title,
         kind: kind,
+        reminderTime: task.reminderTime,
       ),
     );
+  }
+
+  int compareTimeOfDay(TimeOfDay a, TimeOfDay b) {
+    final hourCompare = a.hour.compareTo(b.hour);
+    if (hourCompare != 0) return hourCompare;
+    return a.minute.compareTo(b.minute);
   }
 
   int kindOrder(FlowDoCalendarTaskKind value) => switch (value) {
@@ -209,6 +221,17 @@ List<FlowDoCalendarTaskEntry> calendarTasksForDay({
   entries.sort((a, b) {
     final kindCompare = kindOrder(a.kind).compareTo(kindOrder(b.kind));
     if (kindCompare != 0) return kindCompare;
+
+    final aHasTime = a.reminderTime != null;
+    final bHasTime = b.reminderTime != null;
+    if (aHasTime && bHasTime) {
+      final timeCompare =
+          compareTimeOfDay(a.reminderTime!, b.reminderTime!);
+      if (timeCompare != 0) return timeCompare;
+    } else if (aHasTime != bHasTime) {
+      return aHasTime ? -1 : 1;
+    }
+
     return a.title.compareTo(b.title);
   });
 
@@ -218,6 +241,38 @@ List<FlowDoCalendarTaskEntry> calendarTasksForDay({
 String formatCalendarMonthTitle(DateTime month) {
   return '${month.year}年${month.month}月';
 }
+
+/// カレンダー曜日ラベルの色（日=赤、土=青、平日=標準）
+Color calendarWeekdayLabelColor({
+  required int weekdayIndex,
+  required Color standardColor,
+}) {
+  return switch (weekdayIndex) {
+    0 => calendarSundayColor,
+    6 => calendarSaturdayColor,
+    _ => standardColor,
+  };
+}
+
+/// カレンダー日付数字の色（今日は青丸内の白文字を優先）
+Color calendarDayNumberColor({
+  required DateTime day,
+  required bool isToday,
+  required Color standardColor,
+}) {
+  if (isToday) return Colors.white;
+
+  if (isJapaneseHoliday(day) || day.weekday == DateTime.sunday) {
+    return calendarSundayColor;
+  }
+  if (day.weekday == DateTime.saturday) {
+    return calendarSaturdayColor;
+  }
+  return standardColor;
+}
+
+const calendarSundayColor = Color(0xFFE53935);
+const calendarSaturdayColor = Color(0xFF1565C0);
 
 String formatCalendarDayTitle(DateTime day) {
   const labels = ['月', '火', '水', '木', '金', '土', '日'];

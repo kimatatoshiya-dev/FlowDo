@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 import 'category_item.dart';
 import 'task_priority.dart';
 import '../utils/json_read.dart';
@@ -14,6 +16,7 @@ class Task {
     this.isFavorite = false,
     this.pinnedAt,
     this.dueDate,
+    this.reminderTime,
     this.completedAt,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
@@ -27,6 +30,7 @@ class Task {
   bool isFavorite;
   DateTime? pinnedAt;
   DateTime? dueDate;
+  TimeOfDay? reminderTime;
   DateTime? completedAt;
   final DateTime createdAt;
 
@@ -95,6 +99,9 @@ class Task {
         'isFavorite': isFavorite,
         'pinnedAt': pinnedAt?.toIso8601String(),
         'dueDate': dueDate?.toIso8601String(),
+        'reminderTime': reminderTime == null
+            ? null
+            : _formatReminderTime(reminderTime!),
         'completedAt': completedAt?.toIso8601String(),
         'createdAt': createdAt.toIso8601String(),
       };
@@ -159,9 +166,26 @@ class Task {
       isFavorite: isFavorite,
       pinnedAt: pinnedAt,
       dueDate: dueDate,
+      reminderTime: parseReminderTime(JsonRead.string(json['reminderTime'])),
       completedAt: completedAt,
       createdAt: createdAt,
     );
+  }
+
+  static String _formatReminderTime(TimeOfDay time) {
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '${time.hour}:$minute';
+  }
+
+  static TimeOfDay? parseReminderTime(String? value) {
+    if (value == null || value.isEmpty) return null;
+    final parts = value.split(':');
+    if (parts.length != 2) return null;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return null;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return TimeOfDay(hour: hour, minute: minute);
   }
 
   static String _migrateCategoryId(String? legacy) {

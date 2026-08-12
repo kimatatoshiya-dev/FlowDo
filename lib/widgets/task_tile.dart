@@ -417,9 +417,10 @@ class TaskTile extends StatelessWidget {
               SizedBox(width: useMutedCompleted ? 5 : 6),
               Expanded(
                 child: _MetaTapChip(
-                  label: task.dueDate == null
-                      ? DateFormatter.noDueDateLabel
-                      : DateFormatter.formatDueDate(task.dueDate!),
+                  label: _dueChipLabel(task),
+                  maxLines: task.reminderTime != null && task.dueDate != null
+                      ? 2
+                      : 1,
                   color: task.dueDate == null
                       ? colors.secondaryLabel.withValues(
                           alpha: useMutedCompleted ? 0.65 : 1,
@@ -441,7 +442,9 @@ class TaskTile extends StatelessWidget {
                     colorScheme: colorScheme,
                     useMutedCompleted: useMutedCompleted,
                   ),
-                  icon: Icons.event_outlined,
+                  icon: task.reminderTime != null && task.dueDate != null
+                      ? null
+                      : Icons.event_outlined,
                   onTap: onDueDateTap,
                   compact: useMutedCompleted,
                   expand: true,
@@ -494,6 +497,19 @@ class TaskTile extends StatelessWidget {
     );
   }
 
+  String _dueChipLabel(Task task) {
+    if (task.dueDate == null) {
+      return DateFormatter.noDueDateLabel;
+    }
+    if (task.reminderTime != null) {
+      return DateFormatter.formatDueDateWithTimeChip(
+        task.dueDate!,
+        task.reminderTime!,
+      );
+    }
+    return DateFormatter.formatDueDate(task.dueDate!);
+  }
+
 }
 
 class _MetaTapChip extends StatelessWidget {
@@ -508,6 +524,7 @@ class _MetaTapChip extends StatelessWidget {
     this.expand = false,
     this.tooltip,
     this.denseHorizontal = false,
+    this.maxLines = 1,
   });
 
   final String label;
@@ -520,6 +537,7 @@ class _MetaTapChip extends StatelessWidget {
   final bool expand;
   final String? tooltip;
   final bool denseHorizontal;
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
@@ -531,7 +549,7 @@ class _MetaTapChip extends StatelessWidget {
 
     Widget labelWidget = Text(
       label,
-      maxLines: 1,
+      maxLines: maxLines,
       overflow: TextOverflow.ellipsis,
       style: Theme.of(context).textTheme.labelSmall?.copyWith(
             color: chipColor,

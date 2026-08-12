@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/flowdo_calendar.dart';
 import '../theme/app_theme.dart';
+import '../utils/date_formatter.dart';
 import 'task_completion_toggle.dart';
 
 /// カレンダー日付タップ時の BottomSheet
@@ -176,8 +177,18 @@ class _CalendarTaskRow extends StatelessWidget {
                         completed ? TextDecoration.lineThrough : null,
                     decorationColor: colors.secondaryLabel,
                   ),
-              child: Text(
-                entry.title,
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    if (entry.reminderTime != null) ...[
+                      TextSpan(
+                        text:
+                            '${DateFormatter.formatCalendarTaskTime(entry.reminderTime!)} ',
+                      ),
+                    ],
+                    TextSpan(text: entry.title),
+                  ],
+                ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),

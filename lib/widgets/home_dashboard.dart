@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/category_item.dart';
 import '../models/flowdo_calendar.dart';
+import '../models/task.dart';
 import '../theme/app_theme.dart';
 
 /// カテゴリー別の未完了件数
@@ -19,16 +20,18 @@ class CategoryIncompleteCount {
 class HomeDashboard extends StatefulWidget {
   const HomeDashboard({
     super.key,
-    required this.calendarData,
+    required this.tasks,
     required this.onCalendarDayTap,
     required this.onOpenTodayFocusSheet,
     required this.categoryCounts,
+    this.today,
   });
 
-  final FlowDoCalendarMonthData calendarData;
+  final List<Task> tasks;
   final ValueChanged<DateTime> onCalendarDayTap;
   final VoidCallback onOpenTodayFocusSheet;
   final List<CategoryIncompleteCount> categoryCounts;
+  final DateTime? today;
 
   @override
   State<HomeDashboard> createState() => _HomeDashboardState();
@@ -37,8 +40,37 @@ class HomeDashboard extends StatefulWidget {
 class _HomeDashboardState extends State<HomeDashboard> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
+  late DateTime _displayedMonth;
 
-  static const _calendarPageHeight = 360.0;
+  static const _calendarPageHeight = 384.0;
+
+  @override
+  void initState() {
+    super.initState();
+    final referenceToday = dateOnly(widget.today ?? DateTime.now());
+    _displayedMonth = DateTime(referenceToday.year, referenceToday.month, 1);
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeDashboard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.today != widget.today && widget.today != null) {
+      final referenceToday = dateOnly(widget.today!);
+      _displayedMonth = DateTime(referenceToday.year, referenceToday.month, 1);
+    }
+  }
+
+  void _goToPreviousMonth() {
+    setState(() {
+      _displayedMonth = DateTime(_displayedMonth.year, _displayedMonth.month - 1);
+    });
+  }
+
+  void _goToNextMonth() {
+    setState(() {
+      _displayedMonth = DateTime(_displayedMonth.year, _displayedMonth.month + 1);
+    });
+  }
 
   @override
   void dispose() {
@@ -49,6 +81,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<FlowDoColors>()!;
+    final calendarData = buildFlowDoCalendarMonth(
+      tasks: widget.tasks,
+      month: _displayedMonth,
+      today: widget.today,
+    );
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -61,9 +98,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
               onPageChanged: (index) => setState(() => _currentPage = index),
               children: [
                 _FlowDoCalendarPage(
-                  calendarData: widget.calendarData,
+                  calendarData: calendarData,
                   onDayTap: widget.onCalendarDayTap,
                   onOpenTodayFocusSheet: widget.onOpenTodayFocusSheet,
+                  onPreviousMonth: _goToPreviousMonth,
+                  onNextMonth: _goToNextMonth,
                 ),
                 _CategoryAnalysisPage(categoryCounts: widget.categoryCounts),
               ],
@@ -99,11 +138,15 @@ class _FlowDoCalendarPage extends StatelessWidget {
     required this.calendarData,
     required this.onDayTap,
     required this.onOpenTodayFocusSheet,
+    required this.onPreviousMonth,
+    required this.onNextMonth,
   });
 
   final FlowDoCalendarMonthData calendarData;
   final ValueChanged<DateTime> onDayTap;
   final VoidCallback onOpenTodayFocusSheet;
+  final VoidCallback onPreviousMonth;
+  final VoidCallback onNextMonth;
 
   static const _weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -123,24 +166,52 @@ class _FlowDoCalendarPage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _CalendarSummaryRow(summary: calendarData.summary),
-          const SizedBox(height: 12),
-          Text(
-            monthTitle,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: colors.secondaryLabel,
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
           const SizedBox(height: 8),
           Row(
             children: [
-              for (final label in _weekdayLabels)
+              IconButton(
+                key: const ValueKey('calendar_prev_month'),
+                onPressed: onPreviousMonth,
+                icon: const Text('◀', style: TextStyle(fontSize: 14, height: 1)),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                visualDensity: VisualDensity.compact,
+                tooltip: '前月',
+              ),
+              Expanded(
+                child: Text(
+                  monthTitle,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: colors.secondaryLabel,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ),
+              IconButton(
+                key: const ValueKey('calendar_next_month'),
+                onPressed: onNextMonth,
+                icon: const Text('▶', style: TextStyle(fontSize: 14, height: 1)),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                visualDensity: VisualDensity.compact,
+                tooltip: '翌月',
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              for (var index = 0; index < _weekdayLabels.length; index++)
                 Expanded(
                   child: Center(
                     child: Text(
-                      label,
+                      _weekdayLabels[index],
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: colors.secondaryLabel,
+                            color: calendarWeekdayLabelColor(
+                              weekdayIndex: index,
+                              standardColor: colors.secondaryLabel,
+                            ),
                             fontWeight: FontWeight.w600,
                           ),
                     ),
@@ -179,9 +250,11 @@ class _FlowDoCalendarPage extends StatelessWidget {
 
                     return _CalendarDayCell(
                       day: dayNumber,
+                      date: day,
                       isToday: isToday,
                       markers: markers,
                       primaryColor: colorScheme.primary,
+                      standardTextColor: Theme.of(context).colorScheme.onSurface,
                       onTap: () => onDayTap(day),
                     );
                   },
@@ -262,16 +335,20 @@ class _SummaryBadge extends StatelessWidget {
 class _CalendarDayCell extends StatelessWidget {
   const _CalendarDayCell({
     required this.day,
+    required this.date,
     required this.isToday,
     required this.markers,
     required this.primaryColor,
+    required this.standardTextColor,
     required this.onTap,
   });
 
   final int day;
+  final DateTime date;
   final bool isToday;
   final FlowDoCalendarDayMarkers markers;
   final Color primaryColor;
+  final Color standardTextColor;
   final VoidCallback onTap;
 
   @override
@@ -298,7 +375,11 @@ class _CalendarDayCell extends StatelessWidget {
                 '$day',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                       fontWeight: FontWeight.w600,
-                      color: isToday ? Colors.white : null,
+                      color: calendarDayNumberColor(
+                        day: date,
+                        isToday: isToday,
+                        standardColor: standardTextColor,
+                      ),
                     ),
               ),
             ),

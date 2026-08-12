@@ -6,34 +6,40 @@ import 'package:flowdo/models/flowdo_calendar.dart';
 import 'package:flowdo/models/task.dart';
 import 'package:flowdo/models/today_focus.dart';
 import 'package:flowdo/theme/app_theme.dart';
+import 'package:flowdo/utils/japanese_holidays.dart';
 import 'package:flowdo/widgets/calendar_day_task_sheet.dart';
 import 'package:flowdo/widgets/home_dashboard.dart';
 import 'package:flowdo/widgets/task_completion_toggle.dart';
 import 'package:flowdo/widgets/today_focus_task_sheet.dart';
 
+List<Task> sampleTasks({DateTime? today}) {
+  final referenceToday = today ?? DateTime(2026, 8, 11);
+  return [
+    Task(
+      id: 1,
+      title: '重要',
+      isInbox: false,
+      isFavorite: true,
+    ),
+    Task(
+      id: 2,
+      title: '今日',
+      isInbox: false,
+      dueDate: referenceToday,
+    ),
+    Task(
+      id: 3,
+      title: '予定',
+      isInbox: false,
+      dueDate: DateTime(referenceToday.year, referenceToday.month, 20),
+    ),
+  ];
+}
+
 FlowDoCalendarMonthData sampleCalendarData({DateTime? today}) {
   final referenceToday = today ?? DateTime(2026, 8, 11);
   return buildFlowDoCalendarMonth(
-    tasks: [
-      Task(
-        id: 1,
-        title: '重要',
-        isInbox: false,
-        isFavorite: true,
-      ),
-      Task(
-        id: 2,
-        title: '今日',
-        isInbox: false,
-        dueDate: referenceToday,
-      ),
-      Task(
-        id: 3,
-        title: '予定',
-        isInbox: false,
-        dueDate: DateTime(referenceToday.year, referenceToday.month, 20),
-      ),
-    ],
+    tasks: sampleTasks(today: referenceToday),
     today: referenceToday,
   );
 }
@@ -73,7 +79,8 @@ void main() {
         theme: AppTheme.light(),
         home: Scaffold(
           body: HomeDashboard(
-            calendarData: sampleCalendarData(),
+            tasks: sampleTasks(),
+            today: DateTime(2026, 8, 11),
             categoryCounts: const [],
             onCalendarDayTap: (_) {},
             onOpenTodayFocusSheet: () {},
@@ -84,6 +91,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('2026年8月'), findsOneWidget);
+    expect(find.byKey(const ValueKey('calendar_prev_month')), findsOneWidget);
+    expect(find.byKey(const ValueKey('calendar_next_month')), findsOneWidget);
     expect(find.text('📌'), findsWidgets);
     expect(find.text('🔥'), findsWidgets);
     expect(find.text('📅'), findsWidgets);
@@ -91,6 +100,63 @@ void main() {
     expect(find.text('土'), findsOneWidget);
     expect(find.text('今日やること'), findsNothing);
     expect(find.text('▶ 重要タスク一覧'), findsOneWidget);
+  });
+
+  testWidgets('月切り替えで前月・翌月を表示する', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: HomeDashboard(
+            tasks: sampleTasks(),
+            today: DateTime(2026, 8, 11),
+            categoryCounts: const [],
+            onCalendarDayTap: (_) {},
+            onOpenTodayFocusSheet: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('calendar_next_month')));
+    await tester.pump();
+    expect(find.text('2026年9月'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('calendar_prev_month')));
+    await tester.pump();
+    expect(find.text('2026年8月'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('calendar_prev_month')));
+    await tester.pump();
+    expect(find.text('2026年7月'), findsOneWidget);
+  });
+
+  testWidgets('曜日ラベルに日曜=赤・土曜=青を適用する', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: HomeDashboard(
+            tasks: sampleTasks(),
+            today: DateTime(2026, 8, 11),
+            categoryCounts: const [],
+            onCalendarDayTap: (_) {},
+            onOpenTodayFocusSheet: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final sundayLabel = tester.widget<Text>(find.text('日'));
+    final saturdayLabel = tester.widget<Text>(find.text('土'));
+    final mondayLabel = tester.widget<Text>(find.text('月'));
+
+    expect(sundayLabel.style?.color, calendarSundayColor);
+    expect(saturdayLabel.style?.color, calendarSaturdayColor);
+    expect(mondayLabel.style?.color, isNot(calendarSundayColor));
+    expect(mondayLabel.style?.color, isNot(calendarSaturdayColor));
   });
 
   testWidgets('重要タスク一覧ボタンでコールバックが呼ばれる', (WidgetTester tester) async {
@@ -101,7 +167,8 @@ void main() {
         theme: AppTheme.light(),
         home: Scaffold(
           body: HomeDashboard(
-            calendarData: sampleCalendarData(),
+            tasks: sampleTasks(),
+            today: DateTime(2026, 8, 11),
             categoryCounts: const [],
             onCalendarDayTap: (_) {},
             onOpenTodayFocusSheet: () => opened = true,
@@ -125,7 +192,8 @@ void main() {
         theme: AppTheme.light(),
         home: Scaffold(
           body: HomeDashboard(
-            calendarData: sampleCalendarData(),
+            tasks: sampleTasks(),
+            today: DateTime(2026, 8, 11),
             categoryCounts: const [],
             onCalendarDayTap: (day) => tappedDay = day,
             onOpenTodayFocusSheet: () {},
@@ -183,7 +251,8 @@ void main() {
         theme: AppTheme.light(),
         home: Scaffold(
           body: HomeDashboard(
-            calendarData: sampleCalendarData(),
+            tasks: sampleTasks(),
+            today: DateTime(2026, 8, 11),
             categoryCounts: [
               CategoryIncompleteCount(
                 category: CategoryItem.defaults()[1],
@@ -228,5 +297,30 @@ void main() {
 
     expect(entries, hasLength(3));
     expect(entries.first.kind, TodayFocusFilterKind.important);
+  });
+
+  test('calendarDayNumberColor は今日を優先する', () {
+    final today = DateTime(2026, 8, 11);
+    expect(
+      calendarDayNumberColor(
+        day: today,
+        isToday: true,
+        standardColor: Colors.black,
+      ),
+      Colors.white,
+    );
+  });
+
+  test('calendarDayNumberColor は祝日を赤にする', () {
+    final holiday = DateTime(2026, 1, 1);
+    expect(isJapaneseHoliday(holiday), isTrue);
+    expect(
+      calendarDayNumberColor(
+        day: holiday,
+        isToday: false,
+        standardColor: Colors.black,
+      ),
+      calendarSundayColor,
+    );
   });
 }

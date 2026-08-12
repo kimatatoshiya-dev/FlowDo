@@ -6,6 +6,7 @@ import '../config/app_features.dart';
 import '../config/app_links.dart';
 import '../models/completed_task_retention.dart';
 import '../models/feedback_preferences.dart';
+import '../models/notification_preferences.dart';
 import '../services/app_version_info.dart';
 import '../services/auth/auth_service.dart';
 import '../services/auth/auth_user.dart';
@@ -23,6 +24,8 @@ class SettingsPage extends StatefulWidget {
     required this.onThemeModeChanged,
     required this.feedbackPreferences,
     required this.onFeedbackPreferencesChanged,
+    required this.notificationPreferences,
+    required this.onNotificationPreferencesChanged,
     required this.completedTaskRetention,
     required this.onCompletedTaskRetentionChanged,
     required this.onDeleteAllCompletedTasks,
@@ -37,6 +40,8 @@ class SettingsPage extends StatefulWidget {
   final ValueChanged<ThemeMode> onThemeModeChanged;
   final FeedbackPreferences feedbackPreferences;
   final ValueChanged<FeedbackPreferences> onFeedbackPreferencesChanged;
+  final NotificationPreferences notificationPreferences;
+  final ValueChanged<NotificationPreferences> onNotificationPreferencesChanged;
   final CompletedTaskRetention completedTaskRetention;
   final ValueChanged<CompletedTaskRetention> onCompletedTaskRetentionChanged;
   final Future<void> Function() onDeleteAllCompletedTasks;
@@ -366,6 +371,45 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
           ),
+          const SettingsSectionHeader(title: '通知'),
+          SettingsGroup(
+            children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.notifications_outlined),
+                title: const Text('通知'),
+                subtitle: const Text('時間指定タスクの開始前通知'),
+                value: widget.notificationPreferences.enabled,
+                onChanged: (enabled) {
+                  widget.onNotificationPreferencesChanged(
+                    widget.notificationPreferences.copyWith(
+                      enabled: enabled,
+                    ),
+                  );
+                },
+              ),
+              Divider(height: 1, indent: 56, color: colors.separator),
+              const ListTile(
+                title: Text('通知タイミング'),
+              ),
+              for (final (index, leadTime)
+                  in NotificationLeadTime.values.indexed)
+                _NotificationLeadTimeTile(
+                  label: leadTime.label,
+                  selected:
+                      widget.notificationPreferences.leadTime == leadTime,
+                  showDivider:
+                      index < NotificationLeadTime.values.length - 1,
+                  enabled: widget.notificationPreferences.enabled,
+                  onTap: () {
+                    widget.onNotificationPreferencesChanged(
+                      widget.notificationPreferences.copyWith(
+                        leadTime: leadTime,
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
           if (kCloudAuthEnabled) ...[
             const SettingsSectionHeader(title: 'アカウント'),
             StreamBuilder<AuthUser?>(
@@ -418,6 +462,47 @@ class _RetentionTile extends StatelessWidget {
           ),
           title: Text(label),
           onTap: onTap,
+        ),
+        if (showDivider)
+          Divider(height: 1, indent: 56, color: colors.separator),
+      ],
+    );
+  }
+}
+
+class _NotificationLeadTimeTile extends StatelessWidget {
+  const _NotificationLeadTimeTile({
+    required this.label,
+    required this.selected,
+    required this.showDivider,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final bool showDivider;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowDoColors>()!;
+
+    return Column(
+      children: [
+        ListTile(
+          enabled: enabled,
+          leading: Icon(
+            selected
+                ? Icons.radio_button_checked
+                : Icons.radio_button_off_outlined,
+            color: selected && enabled
+                ? Theme.of(context).colorScheme.primary
+                : null,
+          ),
+          title: Text(label),
+          onTap: enabled ? onTap : null,
         ),
         if (showDivider)
           Divider(height: 1, indent: 56, color: colors.separator),

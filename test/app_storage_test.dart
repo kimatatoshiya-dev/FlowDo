@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flowdo/models/completed_task_retention.dart';
+import 'package:flowdo/models/notification_preferences.dart';
 import 'package:flowdo/services/app_storage.dart';
 
 void main() {
@@ -57,6 +58,32 @@ void main() {
     expect(
       await AppStorage.loadCompletedTaskRetention(),
       CompletedTaskRetention.days30,
+    );
+  });
+
+  test('未保存時は通知設定の初期値を返す', () async {
+    SharedPreferences.setMockInitialValues({});
+    await AppStorage.warmUp();
+
+    expect(
+      await AppStorage.loadNotificationPreferences(),
+      NotificationPreferences.defaults,
+    );
+  });
+
+  test('通知設定を保存と読み込みできる', () async {
+    SharedPreferences.setMockInitialValues({});
+    await AppStorage.warmUp();
+
+    const preferences = NotificationPreferences(
+      enabled: false,
+      leadTime: NotificationLeadTime.minutes30,
+    );
+    await AppStorage.saveNotificationPreferences(preferences);
+
+    expect(
+      await AppStorage.loadNotificationPreferences(),
+      preferences,
     );
   });
 }

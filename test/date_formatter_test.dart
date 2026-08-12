@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flowdo/utils/date_formatter.dart';
 
@@ -24,6 +25,22 @@ void main() {
       expect(
         DateFormatter.formatDueDate(DateTime(2027, 1, 5), reference: reference),
         '2027/1/5',
+      );
+    });
+  });
+
+  group('DateFormatter reminder time', () {
+    test('formatReminderTimeChip は 🕒 付きで表示する', () {
+      expect(
+        DateFormatter.formatReminderTimeChip(const TimeOfDay(hour: 10, minute: 30)),
+        '🕒10:30',
+      );
+    });
+
+    test('formatCalendarTaskTime は時刻絵文字付きで表示する', () {
+      expect(
+        DateFormatter.formatCalendarTaskTime(const TimeOfDay(hour: 9, minute: 0)),
+        '🕘09:00',
       );
     });
   });

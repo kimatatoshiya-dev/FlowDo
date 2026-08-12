@@ -5,6 +5,7 @@ import 'package:flowdo/config/app_links.dart';
 import 'package:flowdo/config/app_features.dart';
 import 'package:flowdo/models/completed_task_retention.dart';
 import 'package:flowdo/models/feedback_preferences.dart';
+import 'package:flowdo/models/notification_preferences.dart';
 import 'package:flowdo/services/app_version_info.dart';
 import 'package:flowdo/services/auth/noop_auth_service.dart';
 import 'package:flowdo/screens/about_page.dart';
@@ -22,6 +23,8 @@ void main() {
         onThemeModeChanged: (_) {},
         feedbackPreferences: FeedbackPreferences.defaults,
         onFeedbackPreferencesChanged: (_) {},
+        notificationPreferences: NotificationPreferences.defaults,
+        onNotificationPreferencesChanged: (_) {},
         completedTaskRetention: CompletedTaskRetention.defaults,
         onCompletedTaskRetentionChanged: (_) {},
         onDeleteAllCompletedTasks: () async {},
@@ -61,6 +64,9 @@ void main() {
     expect(find.text('プライバシーポリシー', skipOffstage: false), findsOneWidget);
     expect(find.text('お問い合わせ', skipOffstage: false), findsOneWidget);
     expect(find.text(AppLinks.contactEmail, skipOffstage: false), findsOneWidget);
+    expect(find.text('通知', skipOffstage: false), findsWidgets);
+    expect(find.text('通知タイミング', skipOffstage: false), findsOneWidget);
+    expect(find.text('15分前（デフォルト）', skipOffstage: false), findsOneWidget);
   });
 
   testWidgets('アプリについて画面へ遷移できる', (WidgetTester tester) async {

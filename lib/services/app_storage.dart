@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/category_item.dart';
 import '../models/completed_task_retention.dart';
 import '../models/feedback_preferences.dart';
+import '../models/notification_preferences.dart';
 import '../models/task.dart';
 
 /// アプリ設定・タスク・カテゴリーの永続化
@@ -22,6 +23,7 @@ class AppStorage {
       'flowdo_last_registration_category_id';
   static const _themeModeKey = 'flowdo_theme_mode';
   static const _feedbackPreferencesKey = 'flowdo_feedback_preferences';
+  static const _notificationPreferencesKey = 'flowdo_notification_preferences';
   static const _completedTaskRetentionKey = 'flowdo_completed_task_retention';
   static const _firstLaunchLoggedKey = 'flowdo_analytics_first_launch_logged';
   static const _inputGuidanceSeenKey = 'flowdo_input_guidance_seen';
@@ -286,6 +288,49 @@ class AppStorage {
       );
     } catch (error, stack) {
       debugPrint('Failed to save feedback preferences: $error');
+      debugPrint(stack.toString());
+    }
+  }
+
+  static Future<NotificationPreferences> loadNotificationPreferences() async {
+    try {
+      final prefs = await _ensurePrefs();
+      if (prefs == null) return NotificationPreferences.defaults;
+
+      final jsonString = prefs.getString(_notificationPreferencesKey);
+      if (jsonString == null || jsonString.isEmpty) {
+        return NotificationPreferences.defaults;
+      }
+
+      final decoded = jsonDecode(jsonString);
+      if (decoded is! Map<String, dynamic>) {
+        debugPrint(
+          'Invalid notification preferences payload: expected a JSON object',
+        );
+        return NotificationPreferences.defaults;
+      }
+
+      return NotificationPreferences.fromJson(decoded);
+    } catch (error, stack) {
+      debugPrint('Failed to load notification preferences: $error');
+      debugPrint(stack.toString());
+      return NotificationPreferences.defaults;
+    }
+  }
+
+  static Future<void> saveNotificationPreferences(
+    NotificationPreferences preferences,
+  ) async {
+    try {
+      final prefs = await _ensurePrefs();
+      if (prefs == null) return;
+
+      await prefs.setString(
+        _notificationPreferencesKey,
+        jsonEncode(preferences.toJson()),
+      );
+    } catch (error, stack) {
+      debugPrint('Failed to save notification preferences: $error');
       debugPrint(stack.toString());
     }
   }

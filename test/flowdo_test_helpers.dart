@@ -6,11 +6,13 @@ import 'package:flowdo/config/app_features.dart';
 import 'package:flowdo/main.dart';
 import 'package:flowdo/services/analytics/noop_analytics_service.dart';
 import 'package:flowdo/services/auth/noop_auth_service.dart';
+import 'package:flowdo/services/task_notification_service.dart';
 import 'package:flowdo/services/tasks/local_task_repository.dart';
 import 'package:flowdo/widgets/category_bar.dart';
 
 const flowDoTestAnalyticsService = NoOpAnalyticsService();
 const flowDoTestAuthService = NoOpAuthService();
+final flowDoTestNotificationService = NoOpTaskNotificationService();
 
 /// 登録フィードバック等の短い遅延を消化する待機時間
 const flowDoRegistrationSettleDuration = Duration(milliseconds: 600);
@@ -34,6 +36,7 @@ Future<void> pumpFlowDoApp(
       analyticsService: flowDoTestAnalyticsService,
       authService: flowDoTestAuthService,
       taskRepository: LocalTaskRepository(),
+      taskNotificationService: flowDoTestNotificationService,
     ),
   );
 

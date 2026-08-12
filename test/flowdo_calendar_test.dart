@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flowdo/models/flowdo_calendar.dart';
@@ -11,6 +12,7 @@ void main() {
     required String title,
     bool isFavorite = false,
     DateTime? dueDate,
+    TimeOfDay? reminderTime,
     bool isCompleted = false,
   }) {
     return Task(
@@ -19,6 +21,7 @@ void main() {
       isInbox: false,
       isFavorite: isFavorite,
       dueDate: dueDate,
+      reminderTime: reminderTime,
       isCompleted: isCompleted,
     );
   }
@@ -59,6 +62,21 @@ void main() {
       expect(scheduledMarkers.showScheduled, isTrue);
       expect(scheduledMarkers.showDueToday, isFalse);
     });
+
+    test('表示月を指定するとその月のタスクマーカーを返す', () {
+      final data = buildFlowDoCalendarMonth(
+        tasks: [
+          task(id: 1, title: 'september', dueDate: DateTime(2026, 9, 15)),
+          task(id: 2, title: 'august', dueDate: DateTime(2026, 8, 20)),
+        ],
+        month: DateTime(2026, 9, 1),
+        today: today,
+      );
+
+      expect(data.summary.dueThisMonthCount, 1);
+      expect(data.markersFor(DateTime(2026, 9, 15)).showScheduled, isTrue);
+      expect(data.markersFor(DateTime(2026, 8, 20)).hasAny, isFalse);
+    });
   });
 
   group('calendarTasksForDay', () {
@@ -76,6 +94,39 @@ void main() {
       expect(entries, hasLength(2));
       expect(entries[0].kind, FlowDoCalendarTaskKind.important);
       expect(entries[1].kind, FlowDoCalendarTaskKind.dueToday);
+    });
+
+    test('時間付きタスクを時間順に並べ、時間なしは後ろ', () {
+      final entries = calendarTasksForDay(
+        tasks: [
+          task(
+            id: 1,
+            title: 'メール返信',
+            dueDate: today,
+            reminderTime: null,
+          ),
+          task(
+            id: 2,
+            title: '提案書',
+            dueDate: today,
+            reminderTime: const TimeOfDay(hour: 10, minute: 30),
+          ),
+          task(
+            id: 3,
+            title: '会議',
+            dueDate: today,
+            reminderTime: const TimeOfDay(hour: 9, minute: 0),
+          ),
+        ],
+        day: today,
+        today: today,
+      );
+
+      expect(entries.map((entry) => entry.title).toList(), [
+        '会議',
+        '提案書',
+        'メール返信',
+      ]);
     });
   });
 
