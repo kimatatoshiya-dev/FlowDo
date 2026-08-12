@@ -10,8 +10,9 @@
 //   - https://github.com/flutter/flutter/issues/187565
 //
 // 【Flutter アップデートで不要になるか】
-// Engine 側で task runner 未準備時のガード、または UIScene + Storyboard 起動順が
-// 公式テンプレートだけで安全になれば、このモジュール一式は削除できます。
+// 注意: KVC で engine を先に生成すると didInitializeImplicitFlutterEngine より前に
+// Dart が動く場合がある。プラグインは AppDelegate 側の GeneratedPluginRegistrant
+// のみで登録し、Dart 側は AppStorage.ensureReady() で登録完了を待つ。
 // （Debug ビルドのデバッガ非接続起動は Flutter の仕様上、引き続き非推奨の可能性あり）
 //
 // 【削除手順（修正確認後）】
@@ -25,3 +26,6 @@
 
 /// Storyboard 上の FlutterViewController が awake する前に launch engine を生成する。
 void FlowDoPrewarmLaunchEngine(FlutterAppDelegate *delegate);
+
+/// prewarm 側で GeneratedPluginRegistrant 済みなら YES
+BOOL FlowDoLaunchPluginsRegistered(void);

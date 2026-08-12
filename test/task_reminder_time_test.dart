@@ -28,6 +28,54 @@ void main() {
     });
   });
 
+  group('shouldScheduleTaskNotification', () {
+    test('時間設定済みの未完了タスクのみ対象', () {
+      final task = Task(
+        id: 1,
+        title: '会議',
+        isInbox: false,
+        dueDate: DateTime(2026, 8, 17),
+        reminderTime: const TimeOfDay(hour: 10, minute: 30),
+      );
+
+      expect(
+        shouldScheduleTaskNotification(task, NotificationPreferences.defaults),
+        isTrue,
+      );
+      expect(
+        shouldScheduleTaskNotification(
+          Task(
+            id: 2,
+            title: '日付のみ',
+            dueDate: DateTime(2026, 8, 17),
+          ),
+          NotificationPreferences.defaults,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldScheduleTaskNotification(
+          task,
+          const NotificationPreferences(enabled: false),
+        ),
+        isFalse,
+      );
+      expect(
+        shouldScheduleTaskNotification(
+          Task(
+            id: 3,
+            title: '完了済み',
+            isCompleted: true,
+            dueDate: DateTime(2026, 8, 17),
+            reminderTime: const TimeOfDay(hour: 10, minute: 30),
+          ),
+          NotificationPreferences.defaults,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('notificationDateTimeForTask', () {
     test('15分前の通知時刻を返す', () {
       final task = Task(

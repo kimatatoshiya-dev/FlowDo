@@ -13,6 +13,10 @@ class TaskDueDateTimeSheet extends StatefulWidget {
     super.key,
     required this.initialDueDate,
     required this.initialReminderTime,
+    required this.notificationPreferences,
+    required this.notificationsFeatureEnabled,
+    required this.checkNotificationPermission,
+    required this.onRequestNotificationPermission,
     required this.onDueDateChanged,
     required this.onReminderTimeChanged,
     this.promptForTimeOnOpen = false,
@@ -20,6 +24,10 @@ class TaskDueDateTimeSheet extends StatefulWidget {
 
   final DateTime? initialDueDate;
   final TimeOfDay? initialReminderTime;
+  final NotificationPreferences notificationPreferences;
+  final bool notificationsFeatureEnabled;
+  final Future<bool> Function() checkNotificationPermission;
+  final Future<bool> Function() onRequestNotificationPermission;
   final Future<void> Function(DateTime? dueDate) onDueDateChanged;
   final Future<void> Function(TimeOfDay? reminderTime) onReminderTimeChanged;
   final bool promptForTimeOnOpen;
@@ -28,6 +36,10 @@ class TaskDueDateTimeSheet extends StatefulWidget {
     BuildContext context, {
     required DateTime? initialDueDate,
     required TimeOfDay? initialReminderTime,
+    required NotificationPreferences notificationPreferences,
+    required bool notificationsFeatureEnabled,
+    required Future<bool> Function() checkNotificationPermission,
+    required Future<bool> Function() onRequestNotificationPermission,
     required Future<void> Function(DateTime? dueDate) onDueDateChanged,
     required Future<void> Function(TimeOfDay? reminderTime) onReminderTimeChanged,
     bool promptForTimeOnOpen = false,
@@ -39,6 +51,10 @@ class TaskDueDateTimeSheet extends StatefulWidget {
       builder: (context) => TaskDueDateTimeSheet(
         initialDueDate: initialDueDate,
         initialReminderTime: initialReminderTime,
+        notificationPreferences: notificationPreferences,
+        notificationsFeatureEnabled: notificationsFeatureEnabled,
+        checkNotificationPermission: checkNotificationPermission,
+        onRequestNotificationPermission: onRequestNotificationPermission,
         onDueDateChanged: onDueDateChanged,
         onReminderTimeChanged: onReminderTimeChanged,
         promptForTimeOnOpen: promptForTimeOnOpen,
@@ -54,17 +70,48 @@ class _TaskDueDateTimeSheetState extends State<TaskDueDateTimeSheet> {
   late DateTime? _dueDate;
   late TimeOfDay? _reminderTime;
   var _isSaving = false;
+  var _permissionGranted = false;
+  var _permissionChecked = false;
+  var _permissionRequesting = false;
+
+  bool get _notificationsEnabled =>
+      widget.notificationsFeatureEnabled &&
+      widget.notificationPreferences.enabled &&
+      widget.notificationPreferences.leadTime != NotificationLeadTime.none;
 
   @override
   void initState() {
     super.initState();
     _dueDate = widget.initialDueDate;
     _reminderTime = widget.initialReminderTime;
+    unawaited(_refreshPermissionStatus());
 
     if (widget.promptForTimeOnOpen && _dueDate != null && _reminderTime == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(_promptForTime());
       });
+    }
+  }
+
+  Future<void> _refreshPermissionStatus() async {
+    final granted = await widget.checkNotificationPermission();
+    if (!mounted) return;
+    setState(() {
+      _permissionGranted = granted;
+      _permissionChecked = true;
+    });
+  }
+
+  Future<void> _requestPermission() async {
+    if (_permissionRequesting) return;
+    setState(() => _permissionRequesting = true);
+    try {
+      await widget.onRequestNotificationPermission();
+      await _refreshPermissionStatus();
+    } finally {
+      if (mounted) {
+        setState(() => _permissionRequesting = false);
+      }
     }
   }
 
@@ -111,6 +158,8 @@ class _TaskDueDateTimeSheetState extends State<TaskDueDateTimeSheet> {
 
     setState(() => _reminderTime = picked);
     await _runSave(() => widget.onReminderTimeChanged(picked));
+    if (!mounted) return;
+    await _refreshPermissionStatus();
   }
 
   Future<void> _promptForTime() async {
@@ -211,8 +260,14 @@ class _TaskDueDateTimeSheetState extends State<TaskDueDateTimeSheet> {
               const SizedBox(height: 12),
               Divider(height: 1, color: colors.separator),
               const SizedBox(height: 4),
-              _FutureNotificationRow(
-                leadTimeLabel: NotificationLeadTime.minutes15.label,
+              _TaskNotificationStatusRow(
+                notificationsFeatureEnabled: widget.notificationsFeatureEnabled,
+                notificationsEnabled: _notificationsEnabled,
+                permissionChecked: _permissionChecked,
+                permissionGranted: _permissionGranted,
+                permissionRequesting: _permissionRequesting,
+                leadTimeLabel: widget.notificationPreferences.leadTime.label,
+                onRequestPermission: _requestPermission,
               ),
             ],
             if (_isSaving) ...[
@@ -297,37 +352,104 @@ class _DueDateTimeSummary extends StatelessWidget {
   }
 }
 
-/// 将来のタスク別通知設定用プレースホルダー（今回は UI のみ）
-class _FutureNotificationRow extends StatelessWidget {
-  const _FutureNotificationRow({required this.leadTimeLabel});
+class _TaskNotificationStatusRow extends StatelessWidget {
+  const _TaskNotificationStatusRow({
+    required this.notificationsFeatureEnabled,
+    required this.notificationsEnabled,
+    required this.permissionChecked,
+    required this.permissionGranted,
+    required this.permissionRequesting,
+    required this.leadTimeLabel,
+    required this.onRequestPermission,
+  });
 
+  final bool notificationsFeatureEnabled;
+  final bool notificationsEnabled;
+  final bool permissionChecked;
+  final bool permissionGranted;
+  final bool permissionRequesting;
   final String leadTimeLabel;
+  final VoidCallback onRequestPermission;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<FlowDoColors>()!;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    if (!notificationsEnabled) {
+      return ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Text('🔔', style: TextStyle(fontSize: 20, height: 1)),
+        title: const Text('通知'),
+        subtitle: Text(
+          notificationsFeatureEnabled
+              ? '設定で通知がOFFです'
+              : '現在利用できません',
+          style: TextStyle(color: colors.secondaryLabel),
+        ),
+        trailing: Text(
+          'OFF',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: colors.secondaryLabel,
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+      );
+    }
+
+    if (!permissionChecked) {
+      return ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Text('🔔', style: TextStyle(fontSize: 20, height: 1)),
+        title: const Text('通知'),
+        subtitle: Text(
+          leadTimeLabel,
+          style: TextStyle(color: colors.secondaryLabel),
+        ),
+        trailing: const SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+
+    if (!permissionGranted) {
+      return ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Text('🔔', style: TextStyle(fontSize: 20, height: 1)),
+        title: const Text('通知'),
+        subtitle: Text(
+          '$leadTimeLabel · 通知の許可が必要です',
+          style: TextStyle(color: colors.secondaryLabel),
+        ),
+        trailing: permissionRequesting
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : TextButton(
+                onPressed: onRequestPermission,
+                child: const Text('許可する'),
+              ),
+      );
+    }
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      enabled: false,
       leading: const Text('🔔', style: TextStyle(fontSize: 20, height: 1)),
-      title: Text(
-        '通知',
-        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              fontWeight: FontWeight.w500,
-              color: colors.secondaryLabel,
-            ),
-      ),
+      title: const Text('通知'),
       subtitle: Text(
-        '$leadTimeLabel（準備中）',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: colors.secondaryLabel.withValues(alpha: 0.8),
-            ),
+        leadTimeLabel,
+        style: TextStyle(color: colors.secondaryLabel),
       ),
-      trailing: Icon(
-        CupertinoIcons.lock_fill,
-        size: 16,
-        color: colors.secondaryLabel.withValues(alpha: 0.55),
+      trailing: Text(
+        'ON',
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: colorScheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
       ),
     );
   }

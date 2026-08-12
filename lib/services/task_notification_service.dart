@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../config/app_features.dart';
 import '../models/notification_preferences.dart';
 import '../models/task.dart';
 
@@ -19,11 +21,52 @@ abstract class TaskNotificationService {
 
   Future<bool> requestPermissions();
 
+  Future<bool> hasPermissions();
+
+  Future<void> scheduleTaskNotification(Task task);
+
   Future<void> syncTasks(List<Task> tasks);
 
   Future<void> cancelTask(int taskId);
 
+  Future<List<PendingNotificationRequest>> pendingNotifications();
+
   Future<void> dispose();
+}
+
+/// 通知対象かどうか（テスト用に公開）
+bool shouldScheduleTaskNotification(
+  Task task,
+  NotificationPreferences preferences,
+) {
+  if (!preferences.enabled) return false;
+  if (preferences.leadTime == NotificationLeadTime.none) return false;
+  if (task.isCompleted) return false;
+  if (task.reminderTime == null) return false;
+  if (task.dueDate == null) return false;
+  return true;
+}
+
+/// 通知日時の計算（テスト用に公開）
+DateTime? notificationDateTimeForTask(
+  Task task,
+  NotificationPreferences preferences,
+) {
+  if (!shouldScheduleTaskNotification(task, preferences)) return null;
+
+  final leadDuration = preferences.leadTime.leadDuration;
+  if (leadDuration == null) return null;
+
+  final due = task.dueDate!;
+  final time = task.reminderTime!;
+  final dueDateTime = DateTime(
+    due.year,
+    due.month,
+    due.day,
+    time.hour,
+    time.minute,
+  );
+  return dueDateTime.subtract(leadDuration);
 }
 
 /// flutter_local_notifications による実装
@@ -35,11 +78,13 @@ class NativeTaskNotificationService implements TaskNotificationService {
   static const _channelId = 'flowdo_task_reminders';
   static const _channelName = 'タスクリマインダー';
   static const _channelDescription = '時間指定タスクの開始前通知';
+  static const _logTag = '[FlowDoNotif]';
 
   NotificationPreferences _preferences;
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   bool _initialized = false;
+  Future<void>? _initializationFuture;
 
   @override
   NotificationPreferences get preferences => _preferences;
@@ -49,150 +94,372 @@ class NativeTaskNotificationService implements TaskNotificationService {
     _preferences = preferences;
   }
 
+  Future<void> _ensureInitialized() async {
+    if (_initialized) return;
+    _initializationFuture ??= _initializeInternal();
+    try {
+      await _initializationFuture;
+    } catch (_) {
+      // 呼び出し元へ例外を伝播させない（通知失敗でアプリ全体を止めない）
+    }
+  }
+
   @override
-  Future<void> initialize() async {
+  Future<void> initialize() => _ensureInitialized();
+
+  Future<void> _initializeInternal() async {
     if (_initialized) return;
 
-    tz_data.initializeTimeZones();
     try {
-      tz.setLocalLocation(tz.local);
-    } catch (_) {
-      tz.setLocalLocation(tz.getLocation('Asia/Tokyo'));
+      tz_data.initializeTimeZones();
+      await _configureLocalTimeZone();
+
+      const androidSettings =
+          AndroidInitializationSettings('@mipmap/ic_launcher');
+      const iosSettings = DarwinInitializationSettings(
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+      );
+      const settings = InitializationSettings(
+        android: androidSettings,
+        iOS: iosSettings,
+      );
+
+      await _plugin.initialize(settings: settings);
+
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+        await androidPlugin?.createNotificationChannel(
+          const AndroidNotificationChannel(
+            _channelId,
+            _channelName,
+            description: _channelDescription,
+            importance: Importance.high,
+          ),
+        );
+        await androidPlugin?.requestExactAlarmsPermission();
+      }
+
+      _initialized = true;
+      _log('initialize complete');
+    } catch (error, stack) {
+      _initialized = false;
+      _initializationFuture = null;
+      _log('initialize failed: $error');
+      debugPrint(stack.toString());
     }
+  }
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const iosSettings = DarwinInitializationSettings();
-    const settings = InitializationSettings(
-      android: androidSettings,
-      iOS: iosSettings,
-    );
-
-    await _plugin.initialize(
-      settings: settings,
-    );
-
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      await _plugin
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(
-            const AndroidNotificationChannel(
-              _channelId,
-              _channelName,
-              description: _channelDescription,
-              importance: Importance.high,
-            ),
-          );
+  Future<void> _configureLocalTimeZone() async {
+    try {
+      final timeZoneInfo = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(timeZoneInfo.identifier));
+      _log('timezone=${timeZoneInfo.identifier}');
+    } catch (error, stack) {
+      _log('timezone lookup failed: $error');
+      debugPrint(stack.toString());
+      try {
+        tz.setLocalLocation(tz.getLocation('Asia/Tokyo'));
+      } catch (_) {
+        tz.setLocalLocation(tz.UTC);
+      }
     }
-
-    _initialized = true;
   }
 
   @override
   Future<bool> requestPermissions() async {
+    try {
+      await _ensureInitialized();
+    } catch (error, stack) {
+      _log('requestPermissions aborted (init failed): $error');
+      debugPrint(stack.toString());
+      return false;
+    }
+    if (!_initialized) return false;
     if (kIsWeb) return false;
 
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      final granted = await _plugin
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.requestNotificationsPermission();
-      return granted ?? false;
+    try {
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+        final notificationsGranted =
+            await androidPlugin?.requestNotificationsPermission();
+        await androidPlugin?.requestExactAlarmsPermission();
+        final granted = notificationsGranted ?? false;
+        _log('requestPermissions(android) granted=$granted');
+        return granted;
+      }
+
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        final granted = await _plugin
+            .resolvePlatformSpecificImplementation<
+                IOSFlutterLocalNotificationsPlugin>()
+            ?.requestPermissions(
+              alert: true,
+              badge: true,
+              sound: true,
+            );
+        final result = granted ?? false;
+        _log('requestPermissions(ios) granted=$result');
+        return result;
+      }
+
+      if (defaultTargetPlatform == TargetPlatform.macOS) {
+        final granted = await _plugin
+            .resolvePlatformSpecificImplementation<
+                MacOSFlutterLocalNotificationsPlugin>()
+            ?.requestPermissions(
+              alert: true,
+              badge: true,
+              sound: true,
+            );
+        final result = granted ?? false;
+        _log('requestPermissions(macos) granted=$result');
+        return result;
+      }
+
+      return true;
+    } catch (error, stack) {
+      _log('requestPermissions failed: $error');
+      debugPrint(stack.toString());
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> hasPermissions() async {
+    try {
+      await _ensureInitialized();
+    } catch (error, stack) {
+      _log('hasPermissions aborted (init failed): $error');
+      debugPrint(stack.toString());
+      return false;
+    }
+    if (!_initialized) return false;
+    if (kIsWeb) return false;
+
+    try {
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+        final enabled = await androidPlugin?.areNotificationsEnabled();
+        return enabled ?? false;
+      }
+
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        final options = await _plugin
+            .resolvePlatformSpecificImplementation<
+                IOSFlutterLocalNotificationsPlugin>()
+            ?.checkPermissions();
+        return options?.isEnabled ?? false;
+      }
+
+      if (defaultTargetPlatform == TargetPlatform.macOS) {
+        final options = await _plugin
+            .resolvePlatformSpecificImplementation<
+                MacOSFlutterLocalNotificationsPlugin>()
+            ?.checkPermissions();
+        return options?.isEnabled ?? false;
+      }
+
+      return true;
+    } catch (error, stack) {
+      _log('hasPermissions failed: $error');
+      debugPrint(stack.toString());
+      return false;
+    }
+  }
+
+  @override
+  Future<void> scheduleTaskNotification(Task task) async {
+    _log(
+      'scheduleTaskNotification called '
+      'taskId=${task.id} title="${task.title}" '
+      'dueDate=${task.dueDate} reminderTime=${task.reminderTime}',
+    );
+
+    try {
+      await _ensureInitialized();
+    } catch (error, stack) {
+      _log('scheduleTaskNotification aborted (init failed): $error');
+      debugPrint(stack.toString());
+      return;
     }
 
-    if (defaultTargetPlatform == TargetPlatform.iOS ||
-        defaultTargetPlatform == TargetPlatform.macOS) {
-      final granted = await _plugin
-          .resolvePlatformSpecificImplementation<
-              IOSFlutterLocalNotificationsPlugin>()
-          ?.requestPermissions(
-            alert: true,
-            badge: true,
-            sound: true,
-          );
-      return granted ?? false;
+    if (!shouldScheduleTaskNotification(task, _preferences)) {
+      _log('scheduleTaskNotification skip (not eligible)');
+      await cancelTask(task.id);
+      return;
     }
 
-    return true;
+    if (!await hasPermissions()) {
+      _log('scheduleTaskNotification skip (permission not granted)');
+      return;
+    }
+
+    await _scheduleTask(task);
   }
 
   @override
   Future<void> syncTasks(List<Task> tasks) async {
-    if (!_initialized) {
-      await initialize();
+    try {
+      await _ensureInitialized();
+    } catch (error, stack) {
+      _log('syncTasks aborted (init failed): $error');
+      debugPrint(stack.toString());
+      return;
     }
 
+    final scheduledIds = <int>{};
+
     for (final task in tasks) {
-      if (_shouldSchedule(task)) {
+      if (shouldScheduleTaskNotification(task, _preferences)) {
+        scheduledIds.add(task.id);
         await _scheduleTask(task);
       } else {
         await cancelTask(task.id);
       }
+    }
+
+    await _cancelOrphanedNotifications(scheduledIds);
+  }
+
+  Future<void> _cancelOrphanedNotifications(Set<int> scheduledIds) async {
+    try {
+      final pending = await _plugin.pendingNotificationRequests();
+      for (final request in pending) {
+        if (!scheduledIds.contains(request.id)) {
+          await _plugin.cancel(id: request.id);
+        }
+      }
+    } catch (error, stack) {
+      _log('cancel orphaned failed: $error');
+      debugPrint(stack.toString());
     }
   }
 
   @override
   Future<void> cancelTask(int taskId) async {
     if (!_initialized) return;
-    await _plugin.cancel(id: taskId);
+    try {
+      await _plugin.cancel(id: taskId);
+      _log('cancelTask taskId=$taskId');
+    } catch (error, stack) {
+      _log('cancelTask failed taskId=$taskId error=$error');
+      debugPrint(stack.toString());
+    }
+  }
+
+  @override
+  Future<List<PendingNotificationRequest>> pendingNotifications() async {
+    if (!_initialized) return const [];
+    try {
+      return await _plugin.pendingNotificationRequests();
+    } catch (error, stack) {
+      _log('pendingNotifications failed: $error');
+      debugPrint(stack.toString());
+      return const [];
+    }
   }
 
   @override
   Future<void> dispose() async {}
 
-  bool _shouldSchedule(Task task) {
-    if (!_preferences.enabled) return false;
-    if (_preferences.leadTime == NotificationLeadTime.none) return false;
-    if (task.isCompleted) return false;
-    if (task.dueDate == null || task.reminderTime == null) return false;
-    return true;
-  }
-
-  DateTime? _notificationDateTime(Task task) {
-    final leadDuration = _preferences.leadTime.leadDuration;
-    if (leadDuration == null) return null;
-
-    final due = task.dueDate!;
-    final time = task.reminderTime!;
-    final dueDateTime = DateTime(
-      due.year,
-      due.month,
-      due.day,
-      time.hour,
-      time.minute,
-    );
-    return dueDateTime.subtract(leadDuration);
-  }
-
   Future<void> _scheduleTask(Task task) async {
-    final scheduledAt = _notificationDateTime(task);
+    final scheduledAt = notificationDateTimeForTask(task, _preferences);
     if (scheduledAt == null) {
+      _log('_scheduleTask skip (no schedule time) taskId=${task.id}');
       await cancelTask(task.id);
       return;
     }
 
     if (!scheduledAt.isAfter(DateTime.now())) {
+      _log(
+        '_scheduleTask skip (past) taskId=${task.id} scheduledAt=$scheduledAt',
+      );
       await cancelTask(task.id);
       return;
     }
 
-    await _plugin.zonedSchedule(
-      id: task.id,
-      title: 'FlowDo',
-      body: '「${task.title}」の時間です。まもなく開始予定です。',
-      scheduledDate: tz.TZDateTime.from(scheduledAt, tz.local),
-      notificationDetails: const NotificationDetails(
-        android: AndroidNotificationDetails(
-          _channelId,
-          _channelName,
-          channelDescription: _channelDescription,
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-        iOS: DarwinNotificationDetails(),
-      ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+    await cancelTask(task.id);
+
+    final tzScheduled = tz.TZDateTime(
+      tz.local,
+      scheduledAt.year,
+      scheduledAt.month,
+      scheduledAt.day,
+      scheduledAt.hour,
+      scheduledAt.minute,
     );
+
+    _log(
+      'zonedSchedule start taskId=${task.id} '
+      'local=$scheduledAt tz=$tzScheduled lead=${_preferences.leadTime.label}',
+    );
+
+    try {
+      await _plugin.zonedSchedule(
+        id: task.id,
+        title: 'FlowDo',
+        body: '「${task.title}」の時間です。まもなく開始予定です。',
+        scheduledDate: tzScheduled,
+        notificationDetails: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _channelId,
+            _channelName,
+            channelDescription: _channelDescription,
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      );
+
+      final pending = await pendingNotifications();
+      final registered = pending.any((request) => request.id == task.id);
+      _log(
+        'zonedSchedule done taskId=${task.id} registered=$registered '
+        'pendingCount=${pending.length}',
+      );
+    } catch (error, stack) {
+      _log('zonedSchedule failed taskId=${task.id} error=$error');
+      debugPrint(stack.toString());
+    }
+  }
+
+  void _log(String message) {
+    debugPrint('$_logTag $message');
+  }
+}
+
+/// 機能フラグに応じた通知サービスを生成する
+TaskNotificationService createTaskNotificationService([
+  NotificationPreferences? preferences,
+]) {
+  if (!kTaskNotificationsEnabled) {
+    return NoOpTaskNotificationService(preferences);
+  }
+  return NativeTaskNotificationService(preferences);
+}
+
+/// 起動後に安全に通知基盤を初期化する（失敗しても例外を外に出さない）
+Future<void> safeInitializeTaskNotifications(
+  TaskNotificationService service,
+) async {
+  if (!kTaskNotificationsEnabled) return;
+
+  try {
+    await service.initialize();
+  } catch (error, stack) {
+    debugPrint('[FlowDoNotif] safeInitialize failed: $error');
+    debugPrint(stack.toString());
   }
 }
 
@@ -219,34 +486,71 @@ class NoOpTaskNotificationService implements TaskNotificationService {
   Future<bool> requestPermissions() async => true;
 
   @override
+  Future<bool> hasPermissions() async => true;
+
+  @override
+  Future<void> scheduleTaskNotification(Task task) async {}
+
+  @override
   Future<void> syncTasks(List<Task> tasks) async {}
 
   @override
   Future<void> cancelTask(int taskId) async {}
 
   @override
+  Future<List<PendingNotificationRequest>> pendingNotifications() async {
+    return const [];
+  }
+
+  @override
   Future<void> dispose() async {}
 }
 
-/// 通知日時の計算（テスト用に公開）
-DateTime? notificationDateTimeForTask(
-  Task task,
-  NotificationPreferences preferences,
-) {
-  if (!preferences.enabled) return null;
-  final leadDuration = preferences.leadTime.leadDuration;
-  if (leadDuration == null) return null;
-  if (task.isCompleted) return null;
-  if (task.dueDate == null || task.reminderTime == null) return null;
+/// テスト用: 呼び出しを記録する
+class RecordingTaskNotificationService implements TaskNotificationService {
+  RecordingTaskNotificationService([
+    NotificationPreferences? preferences,
+  ]) : _preferences = preferences ?? NotificationPreferences.defaults;
 
-  final due = task.dueDate!;
-  final time = task.reminderTime!;
-  final dueDateTime = DateTime(
-    due.year,
-    due.month,
-    due.day,
-    time.hour,
-    time.minute,
-  );
-  return dueDateTime.subtract(leadDuration);
+  NotificationPreferences _preferences;
+  final scheduledTaskIds = <int>[];
+  final cancelledTaskIds = <int>[];
+
+  @override
+  NotificationPreferences get preferences => _preferences;
+
+  @override
+  void updatePreferences(NotificationPreferences preferences) {
+    _preferences = preferences;
+  }
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<bool> requestPermissions() async => true;
+
+  @override
+  Future<bool> hasPermissions() async => true;
+
+  @override
+  Future<void> scheduleTaskNotification(Task task) async {
+    scheduledTaskIds.add(task.id);
+  }
+
+  @override
+  Future<void> syncTasks(List<Task> tasks) async {}
+
+  @override
+  Future<void> cancelTask(int taskId) async {
+    cancelledTaskIds.add(taskId);
+  }
+
+  @override
+  Future<List<PendingNotificationRequest>> pendingNotifications() async {
+    return const [];
+  }
+
+  @override
+  Future<void> dispose() async {}
 }

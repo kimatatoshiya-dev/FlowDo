@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:flowdo/models/notification_preferences.dart';
+import 'package:flowdo/models/task.dart';
+import 'package:flowdo/services/task_notification_service.dart';
 import 'package:flowdo/theme/app_theme.dart';
 import 'package:flowdo/utils/date_formatter.dart';
 import 'package:flowdo/widgets/task_due_datetime_sheet.dart';
@@ -14,6 +17,10 @@ void main() {
           body: TaskDueDateTimeSheet(
             initialDueDate: null,
             initialReminderTime: null,
+            notificationPreferences: NotificationPreferences.defaults,
+            notificationsFeatureEnabled: true,
+            checkNotificationPermission: () async => true,
+            onRequestNotificationPermission: () async => true,
             onDueDateChanged: (_) async {},
             onReminderTimeChanged: (_) async {},
           ),
@@ -34,18 +41,48 @@ void main() {
           body: TaskDueDateTimeSheet(
             initialDueDate: DateTime(2026, 8, 17),
             initialReminderTime: const TimeOfDay(hour: 9, minute: 0),
+            notificationPreferences: NotificationPreferences.defaults,
+            notificationsFeatureEnabled: true,
+            checkNotificationPermission: () async => true,
+            onDueDateChanged: (_) async {},
+            onReminderTimeChanged: (_) async {},
+            onRequestNotificationPermission: () async => true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('2026/08/17'), findsOneWidget);
+    expect(find.text('🕘 09:00'), findsOneWidget);
+    expect(find.text('通知'), findsOneWidget);
+    expect(find.text('ON'), findsOneWidget);
+    expect(find.textContaining('準備中'), findsNothing);
+    expect(find.byIcon(Icons.lock), findsNothing);
+  });
+
+  testWidgets('通知権限がない場合は許可ボタンを表示する', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: TaskDueDateTimeSheet(
+            initialDueDate: DateTime(2026, 8, 17),
+            initialReminderTime: const TimeOfDay(hour: 9, minute: 0),
+            notificationPreferences: NotificationPreferences.defaults,
+            notificationsFeatureEnabled: true,
+            checkNotificationPermission: () async => false,
+            onRequestNotificationPermission: () async => true,
             onDueDateChanged: (_) async {},
             onReminderTimeChanged: (_) async {},
           ),
         ),
       ),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    expect(find.text('2026/08/17'), findsOneWidget);
-    expect(find.text('🕘 09:00'), findsOneWidget);
-    expect(find.text('通知'), findsOneWidget);
-    expect(find.textContaining('準備中'), findsOneWidget);
+    expect(find.text('許可する'), findsOneWidget);
+    expect(find.text('ON'), findsNothing);
   });
 
   test('formatReminderTimeSheet はスペース付きで表示する', () {

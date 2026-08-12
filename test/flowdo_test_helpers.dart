@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flowdo/config/app_features.dart';
 import 'package:flowdo/main.dart';
+import 'package:flowdo/services/app_storage.dart';
 import 'package:flowdo/services/analytics/noop_analytics_service.dart';
 import 'package:flowdo/services/auth/noop_auth_service.dart';
 import 'package:flowdo/services/task_notification_service.dart';
@@ -27,6 +28,7 @@ Future<void> pumpFlowDoApp(
 }) async {
   SharedPreferences.resetStatic();
   SharedPreferences.setMockInitialValues(initialPreferences);
+  AppStorage.resetForTesting();
 
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pump();

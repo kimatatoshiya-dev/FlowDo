@@ -12,6 +12,7 @@ void main() {
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    AppStorage.resetForTesting();
     await AppStorage.warmUp();
   });
 

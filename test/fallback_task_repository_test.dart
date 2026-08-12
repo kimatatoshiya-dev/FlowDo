@@ -34,10 +34,14 @@ class _FailingTaskRepository implements TaskRepository {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  tearDown(SharedPreferences.resetStatic);
+  tearDown(() {
+    SharedPreferences.resetStatic();
+    AppStorage.resetForTesting();
+  });
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    AppStorage.resetForTesting();
     await AppStorage.warmUp();
   });
 

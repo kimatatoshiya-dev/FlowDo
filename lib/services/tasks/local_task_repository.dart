@@ -2,7 +2,9 @@ import 'dart:async';
 
 import '../../models/task.dart';
 import '../../debug/startup_trace.dart';
+import '../../debug/task_persistence_diag.dart';
 import '../app_storage.dart';
+import '../../debug/task_storage_log.dart';
 import 'task_repository.dart';
 
 /// SharedPreferences ベースのタスク永続化（オフライン / フォールバック）
@@ -15,6 +17,9 @@ class LocalTaskRepository implements TaskRepository {
   bool _hasSeededStream = false;
 
   List<Task>? _memoryTasks;
+
+  /// 診断用: メモリ上のタスク件数（未ロード時は -1）
+  int get memoryTaskCount => _memoryTasks?.length ?? -1;
 
   @override
   Stream<List<Task>> watchTasks() async* {
@@ -34,9 +39,21 @@ class LocalTaskRepository implements TaskRepository {
       return List<Task>.from(_memoryTasks!);
     }
     startupTrace('LocalTaskRepository.loadTasks() starting');
-    final tasks = await AppStorage.loadTasks();
-    _memoryTasks = tasks;
-    startupTrace('LocalTaskRepository.loadTasks() done', '${tasks.length} task(s)');
+    final ready = await AppStorage.ensureReady();
+    if (!ready) {
+      startupTrace('LocalTaskRepository.loadTasks() aborted', 'storage not ready');
+      return const [];
+    }
+    final tasks = await AppStorage.loadTasks(
+      forceRetry: true,
+      diagSource: 'LocalTaskRepository.loadTasks',
+      logStartupDiag: true,
+    );
+    _memoryTasks = List<Task>.from(tasks);
+    startupTrace(
+      'LocalTaskRepository.loadTasks() done',
+      '${tasks.length} task(s), storageReady=${AppStorage.isStorageReady}',
+    );
     return List<Task>.from(tasks);
   }
 
@@ -87,10 +104,23 @@ class LocalTaskRepository implements TaskRepository {
   }
 
   Future<void> _persist(List<Task> tasks) async {
+    final ready = await AppStorage.ensureReady();
+    if (!ready) {
+      logTaskStorage('_persist skipped: storage not ready');
+      return;
+    }
+
     _memoryTasks = List<Task>.from(tasks);
     await AppStorage.saveTasks(tasks);
+    logDiagRepositoryMemoryAfterSave(memoryTaskCount: _memoryTasks!.length);
     if (!_tasksController.isClosed) {
       _tasksController.add(List<Task>.from(_memoryTasks!));
     }
+  }
+
+  /// 開発中の hot restart 後など、メモリキャッシュを破棄してディスクから再読込する
+  void invalidateMemoryCache() {
+    _memoryTasks = null;
+    _hasSeededStream = false;
   }
 }

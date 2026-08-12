@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -7,7 +8,10 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'app_bootstrap.dart';
 import 'config/app_features.dart';
+import 'debug/persist_device_verify.dart';
+import 'debug/persist_verify_banner.dart';
 import 'debug/startup_trace.dart';
+import 'debug/task_persistence_diag.dart';
 import 'models/category_item.dart';
 import 'models/task.dart';
 import 'models/task_priority.dart';
@@ -33,6 +37,7 @@ import 'services/feedback_service.dart';
 import 'services/task_notification_service.dart';
 import 'services/ai_categorizer_service.dart';
 import 'services/task_organizer_service.dart';
+import 'services/tasks/local_task_repository.dart';
 import 'services/tasks/task_repository.dart';
 import 'theme/app_theme.dart';
 import 'widgets/auth_gate.dart';
@@ -67,12 +72,14 @@ Future<void> main() async {
         onTimeout: () =>
             throw TimeoutException('App bootstrap timed out after 30 seconds'),
       );
-      startupTrace('bootstrapApp() completed (auth restored, storage warmed)');
+      startupTrace('bootstrapApp() completed');
+      final taskNotificationService = createTaskNotificationService();
       runApp(
         FlowDoApp(
           analyticsService: bootstrap.analyticsService,
           authService: bootstrap.authService,
           taskRepository: bootstrap.taskRepository,
+          taskNotificationService: taskNotificationService,
         ),
       );
       startupTrace('runApp(FlowDoApp) called');
@@ -85,6 +92,57 @@ Future<void> main() async {
     }
   }, reportZonedError);
 }
+
+/// 実機検証用: `--dart-define=FLOWDO_VERIFY_NOTIF=true` で
+/// 16分後のタスク → 15分前（約1分後）に通知が届くことを確認する。
+Future<void> _maybeRunNotificationDeviceVerification(
+  TaskNotificationService service,
+) async {
+  if (!kTaskNotificationsEnabled) return;
+  if (!kDebugMode || !const bool.fromEnvironment('FLOWDO_VERIFY_NOTIF')) {
+    return;
+  }
+
+  try {
+    final now = DateTime.now();
+    final dueDateTime = now.add(const Duration(minutes: 16));
+    final task = Task(
+      id: 999001,
+      title: '通知検証',
+      isInbox: false,
+      dueDate: DateTime(
+        dueDateTime.year,
+        dueDateTime.month,
+        dueDateTime.day,
+      ),
+      reminderTime: TimeOfDay(
+        hour: dueDateTime.hour,
+        minute: dueDateTime.minute,
+      ),
+    );
+
+    debugPrint(
+      '[FlowDoNotifVerify] scheduling verification task '
+      'due=${task.reminderTime} (expect notification ~1 min later)',
+    );
+
+    if (!await service.hasPermissions()) {
+      await service.requestPermissions();
+    }
+
+    await service.scheduleTaskNotification(task);
+    final pending = await service.pendingNotifications();
+    debugPrint(
+      '[FlowDoNotifVerify] pendingCount=${pending.length} '
+      'registered=${pending.any((request) => request.id == task.id)}',
+    );
+  } catch (error, stack) {
+    debugPrint('[FlowDoNotifVerify] failed: $error');
+    debugPrint(stack.toString());
+  }
+}
+
+/// 実機検証用: `--dart-define=FLOWDO_VERIFY_PERSIST=true`（persist_device_verify.dart 参照）
 
 /// Firebase 初期化失敗時に白画面にならないようエラーを表示する
 class BootstrapErrorApp extends StatelessWidget {
@@ -151,8 +209,7 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
     super.initState();
     startupTrace('FlowDoApp.initState');
     _taskNotificationService =
-        widget.taskNotificationService ?? NativeTaskNotificationService();
-    unawaited(_taskNotificationService.initialize());
+        widget.taskNotificationService ?? createTaskNotificationService();
     WidgetsBinding.instance.addObserver(this);
     _sessionStartedAt = DateTime.now();
     unawaited(widget.analyticsService.logAppOpen());
@@ -161,9 +218,11 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
         startupTrace('FlowDoApp.runAfterFirstFrame callback start');
         await bootstrapAppStorage();
         startupTrace('FlowDoApp.bootstrapAppStorage done');
+        await runPersistenceDeviceVerification(widget.taskRepository);
         if (await AppStorage.consumeFirstLaunchForAnalytics()) {
           unawaited(widget.analyticsService.logFirstLaunch());
         }
+        await _initializeNotificationService();
         await Future.wait([
           _restoreThemeMode(),
           _restoreFeedbackPreferences(),
@@ -173,6 +232,21 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
         startupTrace('FlowDoApp.runAfterFirstFrame callback done');
       }),
     );
+  }
+
+  Future<void> _initializeNotificationService() async {
+    if (!kTaskNotificationsEnabled) return;
+
+    try {
+      await safeInitializeTaskNotifications(_taskNotificationService);
+      if (await AppStorage.consumeNotificationPermissionPrompt()) {
+        await _taskNotificationService.requestPermissions();
+      }
+      await _maybeRunNotificationDeviceVerification(_taskNotificationService);
+    } catch (error, stack) {
+      debugPrint('Notification service startup failed: $error');
+      debugPrint(stack.toString());
+    }
   }
 
   @override
@@ -270,8 +344,16 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
     final previous = _notificationPreferences;
     if (preferences == previous) return;
 
-    if (preferences.enabled && !previous.enabled) {
-      unawaited(_taskNotificationService.requestPermissions());
+    if (kTaskNotificationsEnabled &&
+        preferences.enabled &&
+        !previous.enabled) {
+      try {
+        await _taskNotificationService.initialize();
+        await _taskNotificationService.requestPermissions();
+      } catch (error, stack) {
+        debugPrint('Notification permission request failed: $error');
+        debugPrint(stack.toString());
+      }
     }
 
     _taskNotificationService.updatePreferences(preferences);
@@ -332,7 +414,8 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     startupTrace('FlowDoApp.build');
-    return MaterialApp(
+    return wrapWithPersistVerifyOverlay(
+      child: MaterialApp(
       title: 'FlowDo',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
@@ -364,6 +447,7 @@ class _FlowDoAppState extends State<FlowDoApp> with WidgetsBindingObserver {
           taskRepository: widget.taskRepository,
         ),
       ),
+    ),
     );
   }
 }
@@ -499,6 +583,19 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      final repository = widget.taskRepository;
+      final repositoryMemoryCount =
+          repository is LocalTaskRepository ? repository.memoryTaskCount : -1;
+      logDiagBeforeAppExit(
+        lifecycleState: state,
+        repositoryMemoryTaskCount: repositoryMemoryCount,
+        homePageTaskCount: _tasks.length,
+      );
+    }
     if (state == AppLifecycleState.resumed) {
       unawaited(_purgeExpiredCompletedTasks());
     }
@@ -931,6 +1028,13 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     startupTrace('_applyTasksFromRepository', '${tasks.length} task(s)');
     if (!mounted) return;
 
+    if (_isLoading) {
+      startupTrace(
+        'FlowDoHomePage initial task restore',
+        '${tasks.length} task(s) from repository',
+      );
+    }
+
     CompletedTaskCleanup.backfillCompletionTimestamps(tasks);
     final retainedTasks = CompletedTaskCleanup.filterExpired(
       tasks,
@@ -973,6 +1077,14 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       }
     }
 
+    logDiagBeforeUiApply(
+      repositoryTaskCount: tasks.length,
+      homePageTaskCountBefore: _tasks.length,
+      retainedTaskCount: retainedTasks.length,
+      homePageTaskCountAfter: updatedTasks.length,
+      isInitialLoad: wasLoading,
+    );
+
     setState(() {
       _tasks
         ..clear()
@@ -984,6 +1096,9 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       unawaited(widget.taskRepository.syncTasks(_tasks));
     }
 
+    widget.taskNotificationService.updatePreferences(
+      widget.notificationPreferences,
+    );
     unawaited(widget.taskNotificationService.syncTasks(_tasks));
 
     if (wasLoading &&
@@ -1214,10 +1329,42 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     setState(update);
     _refreshTodayFocusSheet();
     try {
+      widget.taskNotificationService.updatePreferences(
+        widget.notificationPreferences,
+      );
       await widget.taskRepository.syncTasks(_tasks);
       await widget.taskNotificationService.syncTasks(_tasks);
     } catch (error, stack) {
       debugPrint('Failed to save tasks: $error');
+      debugPrint(stack.toString());
+    }
+  }
+
+  Future<void> _scheduleTaskNotificationIfNeeded(Task task) async {
+    if (!kTaskNotificationsEnabled) return;
+
+    try {
+      widget.taskNotificationService.updatePreferences(
+        widget.notificationPreferences,
+      );
+
+      if (task.reminderTime == null ||
+          task.dueDate == null ||
+          task.isCompleted ||
+          !widget.notificationPreferences.enabled ||
+          widget.notificationPreferences.leadTime ==
+              NotificationLeadTime.none) {
+        await widget.taskNotificationService.cancelTask(task.id);
+        return;
+      }
+
+      if (!await widget.taskNotificationService.hasPermissions()) {
+        await widget.taskNotificationService.requestPermissions();
+      }
+
+      await widget.taskNotificationService.scheduleTaskNotification(task);
+    } catch (error, stack) {
+      debugPrint('Task notification scheduling failed: $error');
       debugPrint(stack.toString());
     }
   }
@@ -1849,6 +1996,11 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       context,
       initialDueDate: task.dueDate,
       initialReminderTime: task.reminderTime,
+      notificationPreferences: widget.notificationPreferences,
+      notificationsFeatureEnabled: kTaskNotificationsEnabled,
+      checkNotificationPermission: widget.taskNotificationService.hasPermissions,
+      onRequestNotificationPermission:
+          widget.taskNotificationService.requestPermissions,
       onDueDateChanged: (dueDate) => _applyDueDate(task, dueDate),
       onReminderTimeChanged: (reminderTime) => _applyReminderTime(task, reminderTime),
     );
@@ -1873,6 +2025,11 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       initialDueDate: due,
       initialReminderTime: null,
       promptForTimeOnOpen: true,
+      notificationPreferences: widget.notificationPreferences,
+      notificationsFeatureEnabled: kTaskNotificationsEnabled,
+      checkNotificationPermission: widget.taskNotificationService.hasPermissions,
+      onRequestNotificationPermission:
+          widget.taskNotificationService.requestPermissions,
       onDueDateChanged: (dueDate) => _applyDueDate(task, dueDate),
       onReminderTimeChanged: (reminderTime) => _applyReminderTime(task, reminderTime),
     );
@@ -1889,6 +2046,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         task.reminderTime = null;
       }
     });
+    await _scheduleTaskNotificationIfNeeded(task);
 
     if (dueDate != null) {
       final daysUntilDue = dueDate.difference(today).inDays;
@@ -1906,6 +2064,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   Future<void> _applyReminderTime(Task task, TimeOfDay? reminderTime) async {
     if (!mounted) return;
     await _updateTasks(() => task.reminderTime = reminderTime);
+    await _scheduleTaskNotificationIfNeeded(task);
   }
 
   Future<void> _deleteTask(Task task) async {

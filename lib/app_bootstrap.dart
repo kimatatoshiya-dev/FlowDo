@@ -65,7 +65,8 @@ Future<AppBootstrapResult> bootstrapApp() async {
     );
   }
 
-  await bootstrapAppStorage();
+  // SharedPreferences は didInitializeImplicitFlutterEngine 完了後に利用可能になる。
+  // runApp 前の ensureReady はタイムアウトしうるため、初回フレーム後に bootstrapAppStorage() へ委譲する。
   final localTaskRepository = LocalTaskRepository();
 
   final TaskRepository taskRepository;
@@ -94,14 +95,22 @@ Future<AppBootstrapResult> bootstrapApp() async {
 Future<void> bootstrapAppStorage() async {
   startupTrace('bootstrapAppStorage() starting');
   try {
-    final ready = await AppStorage.warmUp();
-    startupTrace('bootstrapAppStorage() warmUp done', 'ready=$ready');
+    final ready = await AppStorage.ensureReady();
+    startupTrace('bootstrapAppStorage() ensureReady done', 'ready=$ready');
     if (!ready) {
       debugPrint(
-        'AppStorage bootstrap: continuing with defaults (persistence disabled)',
+        '[FlowDoStorage] bootstrap FAILED: SharedPreferences not ready',
       );
+      return;
     }
+
+    final tasks = await AppStorage.loadStartupTasks();
+    startupTrace(
+      'bootstrapAppStorage() completed',
+      'ready=true tasks=${tasks.length}',
+    );
   } catch (error, stack) {
+    startupTrace('bootstrapAppStorage() FAILED', error);
     await recordHandledError(error, stack, reason: 'bootstrapAppStorage');
   }
 }
