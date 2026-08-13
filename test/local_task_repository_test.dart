@@ -36,8 +36,9 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     await subscription.cancel();
 
-    expect(streamValues, isNotEmpty);
-    expect(streamValues.last.first.title, 'Buy milk');
+    expect(streamValues, hasLength(1));
+    expect(streamValues.single, hasLength(1));
+    expect(streamValues.single.first.title, 'Buy milk');
   });
 
   test('updateTask and deleteTask work', () async {

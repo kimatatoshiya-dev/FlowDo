@@ -10,6 +10,14 @@ import 'package:flowdo/services/auth/noop_auth_service.dart';
 import 'package:flowdo/services/task_notification_service.dart';
 import 'package:flowdo/services/tasks/local_task_repository.dart';
 import 'package:flowdo/widgets/category_bar.dart';
+import 'package:flowdo/widgets/task_swipe_actions.dart';
+
+Finder taskTileForTitle(String title) {
+  return find.ancestor(
+    of: find.text(title, skipOffstage: false),
+    matching: find.byType(TaskSwipeActions),
+  );
+}
 
 const flowDoTestAnalyticsService = NoOpAnalyticsService();
 const flowDoTestAuthService = NoOpAuthService();

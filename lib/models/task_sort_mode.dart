@@ -35,9 +35,26 @@ int comparePinnedOrder(Task a, Task b) {
 
 /// 固定タスクとそれ以外に分割する（入力順を維持）
 (List<Task> pinned, List<Task> unpinned) splitPinnedTasks(List<Task> tasks) {
+  return splitPinnedTasksForDisplay(tasks);
+}
+
+/// 固定レイアウト待機中は見た目だけ先に変え、位置は現在地を維持する
+(List<Task> pinned, List<Task> unpinned) splitPinnedTasksForDisplay(
+  List<Task> tasks, {
+  Set<int> pinLayoutDeferredTaskIds = const {},
+}) {
   final pinned = <Task>[];
   final unpinned = <Task>[];
   for (final task in tasks) {
+    if (pinLayoutDeferredTaskIds.contains(task.id)) {
+      if (task.isFavorite) {
+        unpinned.add(task);
+      } else {
+        pinned.add(task);
+      }
+      continue;
+    }
+
     if (task.isFavorite) {
       pinned.add(task);
     } else {

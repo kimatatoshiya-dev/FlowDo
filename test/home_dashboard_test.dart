@@ -82,7 +82,7 @@ void main() {
             tasks: sampleTasks(),
             today: DateTime(2026, 8, 11),
             categoryCounts: const [],
-            onCalendarDayTap: (_) {},
+            onCalendarDayTap: (_, __) {},
             onOpenTodayFocusSheet: () {},
           ),
         ),
@@ -93,13 +93,48 @@ void main() {
     expect(find.text('2026年8月'), findsOneWidget);
     expect(find.byKey(const ValueKey('calendar_prev_month')), findsOneWidget);
     expect(find.byKey(const ValueKey('calendar_next_month')), findsOneWidget);
-    expect(find.text('📌'), findsWidgets);
+    expect(find.byKey(const ValueKey('dashboard_summary_today')), findsOneWidget);
+    expect(find.byKey(const ValueKey('dashboard_summary_within7days')), findsOneWidget);
+    expect(find.text('今日'), findsOneWidget);
+    expect(find.text('7日以内'), findsOneWidget);
+    expect(find.text('🗓️'), findsOneWidget);
     expect(find.text('🔥'), findsWidgets);
     expect(find.text('📅'), findsWidgets);
     expect(find.text('日'), findsOneWidget);
     expect(find.text('土'), findsOneWidget);
     expect(find.text('今日やること'), findsNothing);
     expect(find.text('▶ 重要タスク一覧'), findsOneWidget);
+  });
+
+  testWidgets('今日・今週カードタップでコールバックが呼ばれる', (WidgetTester tester) async {
+    var todayTapped = false;
+    var weekTapped = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: HomeDashboard(
+            tasks: sampleTasks(),
+            today: DateTime(2026, 8, 11),
+            categoryCounts: const [],
+            onCalendarDayTap: (_, __) {},
+            onOpenTodayFocusSheet: () {},
+            onTodaySummaryTap: () => todayTapped = true,
+            onWeekSummaryTap: () => weekTapped = true,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('dashboard_summary_today')));
+    await tester.pump();
+    expect(todayTapped, isTrue);
+
+    await tester.tap(find.byKey(const ValueKey('dashboard_summary_within7days')));
+    await tester.pump();
+    expect(weekTapped, isTrue);
   });
 
   testWidgets('月切り替えで前月・翌月を表示する', (WidgetTester tester) async {
@@ -111,7 +146,7 @@ void main() {
             tasks: sampleTasks(),
             today: DateTime(2026, 8, 11),
             categoryCounts: const [],
-            onCalendarDayTap: (_) {},
+            onCalendarDayTap: (_, __) {},
             onOpenTodayFocusSheet: () {},
           ),
         ),
@@ -141,7 +176,7 @@ void main() {
             tasks: sampleTasks(),
             today: DateTime(2026, 8, 11),
             categoryCounts: const [],
-            onCalendarDayTap: (_) {},
+            onCalendarDayTap: (_, __) {},
             onOpenTodayFocusSheet: () {},
           ),
         ),
@@ -170,7 +205,7 @@ void main() {
             tasks: sampleTasks(),
             today: DateTime(2026, 8, 11),
             categoryCounts: const [],
-            onCalendarDayTap: (_) {},
+            onCalendarDayTap: (_, __) {},
             onOpenTodayFocusSheet: () => opened = true,
           ),
         ),
@@ -195,7 +230,7 @@ void main() {
             tasks: sampleTasks(),
             today: DateTime(2026, 8, 11),
             categoryCounts: const [],
-            onCalendarDayTap: (day) => tappedDay = day,
+            onCalendarDayTap: (day, _) => tappedDay = day,
             onOpenTodayFocusSheet: () {},
           ),
         ),
@@ -207,6 +242,89 @@ void main() {
     await tester.pump();
 
     expect(tappedDay, DateTime(2026, 8, 11));
+  });
+
+  testWidgets('カレンダー日付タップで当日の全タスクを BottomSheet 表示する', (
+    WidgetTester tester,
+  ) async {
+    final today = DateTime(2026, 8, 13);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: HomeDashboard(
+            tasks: [
+              Task(
+                id: 1,
+                title: 'ゆうと誕プレ',
+                isInbox: false,
+                isFavorite: true,
+              ),
+              Task(
+                id: 2,
+                title: '今日のタスク',
+                isInbox: false,
+                dueDate: today,
+              ),
+              Task(
+                id: 3,
+                title: '7日以内のタスク',
+                isInbox: false,
+                dueDate: today,
+              ),
+            ],
+            today: today,
+            categoryCounts: const [],
+            onCalendarDayTap: (day, referenceToday) async {
+              await CalendarDayTaskSheet.show(
+                tester.element(find.byType(HomeDashboard)),
+                day: day,
+                entries: calendarTasksForDay(
+                  tasks: [
+                    Task(
+                      id: 1,
+                      title: 'ゆうと誕プレ',
+                      isInbox: false,
+                      isFavorite: true,
+                    ),
+                    Task(
+                      id: 2,
+                      title: '今日のタスク',
+                      isInbox: false,
+                      dueDate: today,
+                    ),
+                    Task(
+                      id: 3,
+                      title: '7日以内のタスク',
+                      isInbox: false,
+                      dueDate: today,
+                    ),
+                  ],
+                  day: day,
+                  today: referenceToday,
+                ),
+                onToggleTask: (_) async {},
+                isRemoving: (_) => false,
+                showCompletedStyle: (_) => false,
+              );
+            },
+            onOpenTodayFocusSheet: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('13').first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('8月13日（木）'), findsOneWidget);
+    expect(find.text('ゆうと誕プレ'), findsOneWidget);
+    expect(find.text('今日のタスク'), findsOneWidget);
+    expect(find.text('7日以内のタスク'), findsOneWidget);
+    expect(find.textContaining('固定'), findsOneWidget);
+    expect(find.textContaining('今日'), findsWidgets);
   });
 
   testWidgets('CalendarDayTaskSheet に完了トグル付き一覧を表示する',
@@ -239,9 +357,10 @@ void main() {
     await tester.pump();
 
     expect(find.text('8月11日（火）'), findsOneWidget);
-    expect(find.text('残り 2件'), findsOneWidget);
     expect(find.text('重要タスク'), findsOneWidget);
     expect(find.text('今日タスク'), findsOneWidget);
+    expect(find.textContaining('固定'), findsOneWidget);
+    expect(find.textContaining('今日'), findsWidgets);
     expect(find.byType(TaskCompletionToggle), findsNWidgets(2));
   });
 
@@ -259,7 +378,7 @@ void main() {
                 count: 18,
               ),
             ],
-            onCalendarDayTap: (_) {},
+            onCalendarDayTap: (_, __) {},
             onOpenTodayFocusSheet: () {},
           ),
         ),

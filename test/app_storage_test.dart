@@ -78,6 +78,20 @@ void main() {
     await expectLater(AppStorage.loadTasks(), completes);
   });
 
+  test('saveTasks refuses empty overwrite of existing payload', () async {
+    SharedPreferences.setMockInitialValues({});
+    await AppStorage.warmUp();
+
+    final task = Task.create(title: 'Keep', categoryId: 'work');
+    await AppStorage.saveTasks([task]);
+
+    await AppStorage.saveTasks([]);
+
+    final loaded = await AppStorage.loadTasks(forceRetry: true);
+    expect(loaded, hasLength(1));
+    expect(loaded.single.title, 'Keep');
+  });
+
   test('未保存時は完了タスク保持設定の初期値を返す', () async {
     SharedPreferences.setMockInitialValues({});
     await AppStorage.warmUp();

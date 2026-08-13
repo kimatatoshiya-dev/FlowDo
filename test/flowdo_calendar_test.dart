@@ -40,6 +40,7 @@ void main() {
 
       expect(data.summary.importantCount, 1);
       expect(data.summary.dueTodayCount, 1);
+      expect(data.summary.dueWithin7DaysCount, 1);
       expect(data.summary.dueThisMonthCount, 2);
     });
 
@@ -79,7 +80,68 @@ void main() {
     });
   });
 
+  group('CalendarDaySheetSummary', () {
+    test('表示中エントリから種別件数を集計する', () {
+      final summary = CalendarDaySheetSummary.fromEntries(const [
+        FlowDoCalendarTaskEntry(
+          taskId: 1,
+          title: 'a',
+          kind: FlowDoCalendarTaskKind.important,
+        ),
+        FlowDoCalendarTaskEntry(
+          taskId: 2,
+          title: 'b',
+          kind: FlowDoCalendarTaskKind.dueToday,
+        ),
+        FlowDoCalendarTaskEntry(
+          taskId: 3,
+          title: 'c',
+          kind: FlowDoCalendarTaskKind.scheduled,
+        ),
+        FlowDoCalendarTaskEntry(
+          taskId: 4,
+          title: 'd',
+          kind: FlowDoCalendarTaskKind.scheduled,
+        ),
+      ]);
+
+      expect(summary.importantCount, 1);
+      expect(summary.dueTodayCount, 1);
+      expect(summary.scheduledCount, 2);
+      expect(summary.hasAny, isTrue);
+    });
+  });
+
   group('calendarTasksForDay', () {
+    test('8/13 には固定・今日・予定の各タスクをすべて返す', () {
+      final today = DateTime(2026, 8, 13);
+      final entries = calendarTasksForDay(
+        tasks: [
+          task(id: 1, title: 'ゆうと誕プレ', isFavorite: true),
+          task(id: 2, title: '今日のタスク', dueDate: today),
+          task(
+            id: 3,
+            title: '7日以内のタスク',
+            dueDate: today,
+          ),
+        ],
+        day: today,
+        today: today,
+      );
+
+      expect(entries, hasLength(3));
+      expect(entries.map((entry) => entry.title), [
+        'ゆうと誕プレ',
+        '7日以内のタスク',
+        '今日のタスク',
+      ]);
+      expect(entries.map((entry) => entry.kind), [
+        FlowDoCalendarTaskKind.important,
+        FlowDoCalendarTaskKind.dueToday,
+        FlowDoCalendarTaskKind.dueToday,
+      ]);
+    });
+
     test('指定日のタスクを種別付きで返す', () {
       final entries = calendarTasksForDay(
         tasks: [

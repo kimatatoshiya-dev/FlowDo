@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
-# Device cold-launch verification (no Xcode LLDB).
-# Usage: unlock iPhone, then: ./scripts/verify_device_launch.sh [stock|custom|profile|all]
+# 【調査・リリース前専用】通常開発では使わない（README 参照）
+# Device cold-launch verification (no Xcode LLDB). devicectl install 使用。
+# Usage: ALLOW_VERIFY=1 ./scripts/verify_device_launch.sh [stock|custom|profile|all]
 set -euo pipefail
+
+if [[ "${ALLOW_VERIFY:-0}" != "1" ]]; then
+  echo "ERROR: 調査・リリース前検証専用です。通常開発は flutter run または Xcode Run を使ってください." >&2
+  echo "実行する場合: ALLOW_VERIFY=1 $0 [stock|custom|profile|all]" >&2
+  exit 1
+fi
 
 DEVICE="${DEVICE:-AA400743-773A-548C-AC8E-B4F3D40A32B0}"
 BUNDLE=com.kimata.flowdo

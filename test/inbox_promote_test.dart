@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flowdo/widgets/category_bar.dart';
+import 'package:flowdo/widgets/task_swipe_actions.dart';
+import 'package:flowdo/widgets/task_tile.dart';
 
 import 'flowdo_test_helpers.dart';
 
@@ -23,10 +25,7 @@ void main() {
   }
 
   Finder inboxTaskTile(String title) {
-    return find.ancestor(
-      of: find.text(title, skipOffstage: false),
-      matching: find.byType(Dismissible),
-    );
+    return taskTileForTitle(title);
   }
 
   testWidgets('Inboxタスクのカテゴリ変更後もInboxに残る', (WidgetTester tester) async {
@@ -36,13 +35,13 @@ void main() {
     expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
     expectManualOrganizeButtonVisible(inboxCount: 1);
 
-    final categoryChip = find.descendant(
+    final categoryDot = find.descendant(
       of: inboxTaskTile('設定テスト'),
-      matching: find.text('未分類'),
+      matching: find.byKey(TaskTile.categoryColorDotKey),
     );
-    await tester.ensureVisible(categoryChip);
+    await tester.ensureVisible(categoryDot);
     await settleFlowDoUi(tester);
-    await tester.tap(categoryChip);
+    await tester.tap(categoryDot);
     await tester.pump();
     await settleFlowDoUi(tester);
 
@@ -106,7 +105,7 @@ void main() {
     expect(
       find.descendant(
         of: inboxTaskTile('グループ反映'),
-        matching: find.text('仕事'),
+        matching: find.byKey(TaskTile.categoryColorDotKey),
       ),
       findsOneWidget,
     );

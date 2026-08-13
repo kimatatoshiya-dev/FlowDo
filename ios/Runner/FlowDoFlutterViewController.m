@@ -20,7 +20,7 @@ static FlutterEngine* FlowDoTakeLaunchEngine(FlutterAppDelegate* delegate) {
 
   FlutterEngine* engine = FlowDoTakeLaunchEngine(appDelegate);
   if (engine != nil) {
-    (void)[engine run];
+    // Prewarm 済み launch engine は既に run 済み。二重 run しない。
     return [self initWithEngine:engine nibName:nil bundle:nil];
   }
 

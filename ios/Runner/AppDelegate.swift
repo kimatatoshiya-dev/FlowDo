@@ -8,6 +8,7 @@ import UIKit
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     FlowDoPrewarmLaunchEngine(self)
+    FlowDoRegisterImplicitPluginsOnce(self)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

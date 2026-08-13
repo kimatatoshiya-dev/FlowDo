@@ -62,12 +62,12 @@ void main() {
     await tester.pump();
     await settleAfterTaskRegistration(tester);
 
-    final taskTile = find.ancestor(
-      of: find.text('編集テスト', skipOffstage: false),
-      matching: find.byType(Dismissible),
-    );
+    final taskTile = taskTileForTitle('編集テスト');
     expect(
-      find.descendant(of: taskTile, matching: find.text('未分類')),
+      find.descendant(
+        of: taskTile,
+        matching: find.byKey(TaskTile.categoryColorDotKey),
+      ),
       findsOneWidget,
     );
     expect(find.text('未整理'), findsOneWidget);
@@ -254,17 +254,14 @@ void main() {
     await tester.pump();
     await settleAfterTaskRegistration(tester);
 
-    final firstTile = find.ancestor(
-      of: find.text('1件目', skipOffstage: false),
-      matching: find.byType(Dismissible),
-    );
-    final categoryChip = find.descendant(
+    final firstTile = taskTileForTitle('1件目');
+    final categoryDot = find.descendant(
       of: firstTile,
-      matching: find.text('未分類'),
+      matching: find.byKey(TaskTile.categoryColorDotKey),
     );
-    await tester.ensureVisible(categoryChip);
+    await tester.ensureVisible(categoryDot);
     await settleFlowDoUi(tester);
-    await tester.tap(categoryChip);
+    await tester.tap(categoryDot);
     await tester.pump();
     await settleFlowDoUi(tester);
     await tester.tap(
@@ -287,16 +284,13 @@ void main() {
     await tester.pump();
     await settleAfterTaskRegistration(tester);
 
-    final secondTile = find.ancestor(
-      of: find.text('2件目', skipOffstage: false),
-      matching: find.byType(Dismissible),
-    );
+    final secondTile = taskTileForTitle('2件目');
     await tester.ensureVisible(find.text('2件目', skipOffstage: false));
     await settleFlowDoUi(tester);
     expect(
       find.descendant(
         of: secondTile,
-        matching: find.text('未分類', skipOffstage: false),
+        matching: find.byKey(TaskTile.categoryColorDotKey),
       ),
       findsOneWidget,
     );

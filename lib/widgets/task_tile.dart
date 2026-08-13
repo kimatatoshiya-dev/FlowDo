@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import '../utils/date_formatter.dart';
 import 'inbox_promote_pending.dart';
 import 'registration_feedback.dart';
+import 'task_swipe_actions.dart';
 
 /// タスク1行分のリストタイル
 class TaskTile extends StatelessWidget {
@@ -65,6 +66,8 @@ class TaskTile extends StatelessWidget {
   final Future<void> Function()? onPromoteSwipe;
   final String? categoryChipTooltip;
 
+  static const categoryColorDotKey = ValueKey('task_category_color_dot');
+
   bool get _useCompletedVisual => isCompletedList || task.isCompleted;
 
   bool get _isPinnedTask => task.isFavorite && !_useCompletedVisual;
@@ -104,8 +107,8 @@ class TaskTile extends StatelessWidget {
   }
 
   EdgeInsets get _contentPadding => _useCompletedVisual
-      ? const EdgeInsets.fromLTRB(10, 5, 4, 5)
-      : const EdgeInsets.fromLTRB(12, 7, 8, 7);
+      ? const EdgeInsets.fromLTRB(10, 4, 4, 4)
+      : const EdgeInsets.fromLTRB(12, 5, 6, 5);
 
   double get _checkboxSize => _useCompletedVisual ? 20.0 : 24.0;
 
@@ -116,86 +119,13 @@ class TaskTile extends StatelessWidget {
     final colors = Theme.of(context).extension<FlowDoColors>()!;
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Dismissible(
+    return TaskSwipeActions(
       key: ValueKey(task.id),
-      direction: enableInboxPromoteSwipe
-          ? DismissDirection.horizontal
-          : DismissDirection.endToStart,
-      confirmDismiss: (direction) async {
-        if (enableInboxPromoteSwipe &&
-            direction == DismissDirection.startToEnd) {
-          await onPromoteSwipe?.call();
-          return false;
-        }
-
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('タスクを削除'),
-            content: Text('「${task.title}」を削除しますか？'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('キャンセル'),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: colorScheme.error,
-                  foregroundColor: colorScheme.onError,
-                ),
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('削除'),
-              ),
-            ],
-          ),
-        );
-        return confirmed ?? false;
-      },
-      background: enableInboxPromoteSwipe
-          ? Container(
-              alignment: Alignment.centerLeft,
-              padding: const EdgeInsets.only(left: 20),
-              color: category.color.withValues(alpha: 0.18),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.arrow_forward, color: category.color, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${category.name}へ',
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: category.color,
-                          fontWeight: FontWeight.w600,
-                        ),
-                  ),
-                ],
-              ),
-            )
-          : Container(
-              alignment: Alignment.centerRight,
-              padding: const EdgeInsets.only(right: 20),
-              color: colorScheme.errorContainer,
-              child: Icon(
-                Icons.delete_outline,
-                color: colorScheme.onErrorContainer,
-              ),
-            ),
-      secondaryBackground: enableInboxPromoteSwipe
-          ? Container(
-              alignment: Alignment.centerRight,
-              padding: const EdgeInsets.only(right: 20),
-              color: colorScheme.errorContainer,
-              child: Icon(
-                Icons.delete_outline,
-                color: colorScheme.onErrorContainer,
-              ),
-            )
-          : null,
-      onDismissed: (direction) {
-        if (direction == DismissDirection.endToStart) {
-          onDismissDelete();
-        }
-      },
+      enabled: !isRemoving && !isLayoutAnimating,
+      onComplete: onToggle,
+      onEdit: onEdit,
+      onDismissDelete: onDismissDelete,
+      confirmDelete: () => _confirmDelete(context, colorScheme),
       child: AnimatedOpacity(
         opacity: isRemoving || isLayoutAnimating ? 0.0 : 1.0,
         duration: const Duration(milliseconds: 250),
@@ -267,7 +197,7 @@ class TaskTile extends StatelessWidget {
                               if (showCompletionToggle)
                                 Padding(
                                   padding: EdgeInsets.only(
-                                    top: _useCompletedVisual ? 1 : 2,
+                                    top: _useCompletedVisual ? 0 : 1,
                                   ),
                                   child: GestureDetector(
                                     onTap: onToggle,
@@ -318,7 +248,7 @@ class TaskTile extends StatelessWidget {
                                         onTap: onEdit,
                                         child: Padding(
                                           padding: const EdgeInsets.symmetric(
-                                            vertical: 2,
+                                            vertical: 1,
                                           ),
                                           child: _buildTaskContent(
                                             context,
@@ -357,13 +287,16 @@ class TaskTile extends StatelessWidget {
                                 visualDensity: VisualDensity.compact,
                                 padding: _useCompletedVisual
                                     ? const EdgeInsets.all(4)
-                                    : null,
+                                    : const EdgeInsets.all(6),
                                 constraints: _useCompletedVisual
                                     ? const BoxConstraints(
                                         minWidth: 32,
                                         minHeight: 32,
                                       )
-                                    : null,
+                                    : const BoxConstraints(
+                                        minWidth: 36,
+                                        minHeight: 36,
+                                      ),
                               ),
                             ],
                           ),
@@ -386,6 +319,34 @@ class TaskTile extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<bool> _confirmDelete(
+    BuildContext context,
+    ColorScheme colorScheme,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('タスクを削除'),
+        content: Text('「${task.title}」を削除しますか？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: colorScheme.error,
+              foregroundColor: colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('削除'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
   }
 
   Widget _buildTaskContent(
@@ -418,6 +379,15 @@ class TaskTile extends StatelessWidget {
     final titleRow = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _CategoryColorDot(
+          color: useMutedCompleted
+              ? category.color.withValues(alpha: 0.55)
+              : category.color,
+          onTap: onCategoryTap,
+          tooltip: categoryChipTooltip ?? category.name,
+          compact: useMutedCompleted,
+        ),
+        SizedBox(width: useMutedCompleted ? 7 : 8),
         Expanded(
           child: openEditOnRowTap
               ? title
@@ -475,20 +445,10 @@ class TaskTile extends StatelessWidget {
           ),
         ],
         if (showMetaChips) ...[
-          SizedBox(height: useMutedCompleted ? 4 : 5),
+          SizedBox(height: useMutedCompleted ? 3 : 4),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              _MetaTapChip(
-                label: category.name,
-                tooltip: categoryChipTooltip ?? category.name,
-                color: useMutedCompleted
-                    ? category.color.withValues(alpha: 0.55)
-                    : category.color,
-                onTap: onCategoryTap,
-                compact: useMutedCompleted,
-                fixedWidth: useMutedCompleted ? 76 : 84,
-              ),
-              SizedBox(width: useMutedCompleted ? 5 : 6),
               _MetaTapChip(
                 label: TaskPriorityStars.label(task.priorityStars),
                 color: _priorityChipColor(task.priorityStars, useMutedCompleted),
@@ -497,42 +457,29 @@ class TaskTile extends StatelessWidget {
                 onTap: onPriorityTap,
                 compact: useMutedCompleted,
               ),
-              SizedBox(width: useMutedCompleted ? 5 : 6),
+              SizedBox(width: useMutedCompleted ? 4 : 5),
               Expanded(
-                child: _MetaTapChip(
-                  label: _dueChipLabel(task),
-                  maxLines: task.reminderTime != null && task.dueDate != null
-                      ? 2
-                      : 1,
-                  color: task.dueDate == null
-                      ? colors.secondaryLabel.withValues(
+                child: task.dueDate == null
+                    ? _MetaTapChip(
+                        label: DateFormatter.noDueDateLabel,
+                        color: colors.secondaryLabel.withValues(
                           alpha: useMutedCompleted ? 0.65 : 1,
-                        )
-                      : task.isOverdue
-                          ? colorScheme.error.withValues(
-                              alpha: useMutedCompleted ? 0.65 : 1,
-                            )
-                          : task.isDueToday
-                              ? const Color(0xFFFF9500).withValues(
-                                  alpha: useMutedCompleted ? 0.65 : 1,
-                                )
-                              : colors.secondaryLabel.withValues(
-                                  alpha: useMutedCompleted ? 0.65 : 1,
-                                ),
-                  backgroundColor: _dueChipBackground(
-                    task: task,
-                    colors: colors,
-                    colorScheme: colorScheme,
-                    useMutedCompleted: useMutedCompleted,
-                  ),
-                  icon: task.reminderTime != null && task.dueDate != null
-                      ? null
-                      : Icons.event_outlined,
-                  onTap: onDueDateTap,
-                  compact: useMutedCompleted,
-                  expand: true,
-                  denseHorizontal: true,
-                ),
+                        ),
+                        backgroundColor: colors.secondaryLabel.withValues(
+                          alpha: useMutedCompleted ? 0.04 : 0.06,
+                        ),
+                        icon: Icons.event_outlined,
+                        onTap: onDueDateTap,
+                        compact: useMutedCompleted,
+                        expand: true,
+                        denseHorizontal: true,
+                      )
+                    : _DueDateTapChip(
+                        task: task,
+                        useMutedCompleted: useMutedCompleted,
+                        onTap: onDueDateTap,
+                        compact: useMutedCompleted,
+                      ),
               ),
             ],
           ),
@@ -553,46 +500,119 @@ class TaskTile extends StatelessWidget {
     }
     return colors.background;
   }
+}
 
-  Color _dueChipBackground({
-    required Task task,
-    required FlowDoColors colors,
-    required ColorScheme colorScheme,
-    required bool useMutedCompleted,
-  }) {
-    if (task.dueDate == null) {
-      return colors.secondaryLabel.withValues(
-        alpha: useMutedCompleted ? 0.04 : 0.06,
-      );
-    }
-    if (task.isOverdue) {
-      return colorScheme.error.withValues(
-        alpha: useMutedCompleted ? 0.07 : 0.09,
-      );
-    }
-    if (task.isDueToday) {
-      return const Color(0xFFFF9500).withValues(
-        alpha: useMutedCompleted ? 0.07 : 0.09,
-      );
-    }
-    return colors.secondaryLabel.withValues(
-      alpha: useMutedCompleted ? 0.04 : 0.06,
+class _CategoryColorDot extends StatelessWidget {
+  const _CategoryColorDot({
+    required this.color,
+    required this.onTap,
+    required this.tooltip,
+    required this.compact,
+  });
+
+  final Color color;
+  final VoidCallback onTap;
+  final String tooltip;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = compact ? 7.0 : 8.0;
+
+    return Semantics(
+      label: tooltip,
+      button: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: TaskTile.categoryColorDotKey,
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: Padding(
+            padding: EdgeInsets.only(top: compact ? 4 : 5),
+            child: Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
+}
 
-  String _dueChipLabel(Task task) {
-    if (task.dueDate == null) {
-      return DateFormatter.noDueDateLabel;
-    }
-    if (task.reminderTime != null) {
-      return DateFormatter.formatDueDateWithTimeChip(
-        task.dueDate!,
-        task.reminderTime!,
-      );
-    }
-    return DateFormatter.formatDueDate(task.dueDate!);
+class _DueDateTapChip extends StatelessWidget {
+  const _DueDateTapChip({
+    required this.task,
+    required this.useMutedCompleted,
+    required this.onTap,
+    required this.compact,
+  });
+
+  final Task task;
+  final bool useMutedCompleted;
+  final VoidCallback onTap;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowDoColors>()!;
+    final colorScheme = Theme.of(context).colorScheme;
+    final display = DateFormatter.buildTaskDueChipDisplay(
+      dueDate: task.dueDate!,
+      reminderTime: task.reminderTime,
+    );
+    final foreground = DateFormatter.dueDateChipForeground(
+      display.urgency,
+      colorScheme: colorScheme,
+      secondaryLabel: colors.secondaryLabel,
+      muted: useMutedCompleted,
+    );
+    final background = DateFormatter.dueDateChipBackground(
+      display.urgency,
+      colorScheme: colorScheme,
+      secondaryLabel: colors.secondaryLabel,
+      muted: useMutedCompleted,
+    );
+    final verticalPadding = compact ? 2.0 : 3.0;
+    final horizontalPadding = compact ? 5.0 : 6.0;
+
+    return Tooltip(
+      message: display.tooltipLabel,
+      triggerMode: TooltipTriggerMode.tap,
+      showDuration: const Duration(seconds: 2),
+      waitDuration: Duration.zero,
+      child: Material(
+        color: background,
+        borderRadius: BorderRadius.circular(6),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: horizontalPadding,
+              vertical: verticalPadding,
+            ),
+            child: Text(
+              display.inlineLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: foreground,
+                    fontWeight: FontWeight.w600,
+                    fontSize: compact ? 10 : 11,
+                    height: 1.15,
+                  ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
-
 }
 
 class _MetaTapChip extends StatelessWidget {
@@ -625,10 +645,10 @@ class _MetaTapChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final chipColor = color ?? Theme.of(context).colorScheme.outline;
-    final verticalPadding = compact ? 3.0 : 4.0;
+    final verticalPadding = compact ? 2.0 : 3.0;
     final horizontalPadding = denseHorizontal
         ? (compact ? 5.0 : 6.0)
-        : (compact ? 7.0 : 8.0);
+        : (compact ? 6.0 : 7.0);
 
     Widget labelWidget = Text(
       label,
@@ -753,6 +773,7 @@ class GroupedTaskList extends StatelessWidget {
     this.onPromoteTask,
     this.enablePinnedReorder = false,
     this.onPinnedReorder,
+    this.pinLayoutDeferredTaskIds = const {},
     this.showSectionTitle = true,
   });
 
@@ -782,6 +803,7 @@ class GroupedTaskList extends StatelessWidget {
   final Future<void> Function(Task task)? onPromoteTask;
   final bool enablePinnedReorder;
   final void Function(List<Task> reorderedPinned)? onPinnedReorder;
+  final Set<int> pinLayoutDeferredTaskIds;
   final bool showSectionTitle;
 
   TaskTile _taskTileFor(Task task, {required bool showDivider}) {
@@ -860,7 +882,10 @@ class GroupedTaskList extends StatelessWidget {
   }
 
   Widget _buildPendingGroupedList(BuildContext context, FlowDoColors colors) {
-    final (pinned, unpinned) = splitPinnedTasks(tasks);
+    final (pinned, unpinned) = splitPinnedTasksForDisplay(
+      tasks,
+      pinLayoutDeferredTaskIds: pinLayoutDeferredTaskIds,
+    );
     final canReorderPinned =
         enablePinnedReorder && pinned.length >= 2 && onPinnedReorder != null;
 

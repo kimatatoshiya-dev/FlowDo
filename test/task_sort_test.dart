@@ -333,6 +333,25 @@ void main() {
       expect(pinned.map((t) => t.id), [1, 3]);
       expect(unpinned.map((t) => t.id), [2]);
     });
+
+    test('固定レイアウト待機中は見た目だけ先に変える', () {
+      final pinnedTask = Task(id: 1, title: 'a', isFavorite: true);
+      final unpinnedTask = Task(id: 2, title: 'b');
+
+      final (pinning, unpinnedWhilePinning) = splitPinnedTasksForDisplay(
+        [pinnedTask, unpinnedTask],
+        pinLayoutDeferredTaskIds: {1},
+      );
+      expect(pinning, isEmpty);
+      expect(unpinnedWhilePinning.map((t) => t.id), [1, 2]);
+
+      final (pinnedWhileUnpinning, unpinning) = splitPinnedTasksForDisplay(
+        [pinnedTask, unpinnedTask],
+        pinLayoutDeferredTaskIds: {2},
+      );
+      expect(pinnedWhileUnpinning.map((t) => t.id), [1, 2]);
+      expect(unpinning, isEmpty);
+    });
   });
 
   group('applyPinnedAtOrder', () {

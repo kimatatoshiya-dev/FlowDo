@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flowdo/models/category_item.dart';
 import 'package:flowdo/models/task.dart';
 import 'package:flowdo/widgets/category_bar.dart';
+import 'package:flowdo/widgets/task_swipe_actions.dart';
+import 'package:flowdo/widgets/task_tile.dart';
 
 import 'flowdo_test_helpers.dart';
 
@@ -14,10 +16,12 @@ Finder _taskTitle(String title) {
   return find.text(title, skipOffstage: false);
 }
 
-Finder _taskTile(String title) {
-  return find.ancestor(
-    of: _taskTitle(title),
-    matching: find.byType(Dismissible),
+Finder _taskTile(String title) => taskTileForTitle(title);
+
+Finder _categoryDotInTask(String taskTitle) {
+  return find.descendant(
+    of: _taskTile(taskTitle),
+    matching: find.byKey(TaskTile.categoryColorDotKey),
   );
 }
 
@@ -86,12 +90,12 @@ void main() {
 
     expect(_taskTitle('フィルターテスト'), findsOneWidget);
 
-    await tester.tap(_metaChipInTask('フィルターテスト', '仕事'));
+    await tester.tap(_categoryDotInTask('フィルターテスト'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
     expect(_taskTitle('フィルターテスト'), findsOneWidget);
-    expect(_metaChipInTask('フィルターテスト', '未分類'), findsOneWidget);
+    expect(_categoryDotInTask('フィルターテスト'), findsOneWidget);
 
     await tester.pump(const Duration(milliseconds: 2500));
     await tester.pump(const Duration(milliseconds: 400));
@@ -137,8 +141,8 @@ void main() {
     expect(_metaChipInTask('優先度テスト', '★5'), findsOneWidget);
 
     final beforeOrder = tester
-        .widgetList<Dismissible>(find.byType(Dismissible))
-        .map((dismissible) => dismissible.key)
+        .widgetList<TaskSwipeActions>(find.byType(TaskSwipeActions))
+        .map((swipe) => swipe.key)
         .toList();
     expect(beforeOrder.first, _taskTile('優先度テスト').evaluate().first.widget.key);
 

@@ -17,6 +17,8 @@ class CategoryIncompleteCount {
 }
 
 /// ホーム画面の統計ダッシュボード（PageView）
+typedef CalendarDayTapCallback = void Function(DateTime day, DateTime today);
+
 class HomeDashboard extends StatefulWidget {
   const HomeDashboard({
     super.key,
@@ -24,13 +26,17 @@ class HomeDashboard extends StatefulWidget {
     required this.onCalendarDayTap,
     required this.onOpenTodayFocusSheet,
     required this.categoryCounts,
+    this.onTodaySummaryTap,
+    this.onWeekSummaryTap,
     this.today,
   });
 
   final List<Task> tasks;
-  final ValueChanged<DateTime> onCalendarDayTap;
+  final CalendarDayTapCallback onCalendarDayTap;
   final VoidCallback onOpenTodayFocusSheet;
   final List<CategoryIncompleteCount> categoryCounts;
+  final VoidCallback? onTodaySummaryTap;
+  final VoidCallback? onWeekSummaryTap;
   final DateTime? today;
 
   @override
@@ -42,7 +48,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   int _currentPage = 0;
   late DateTime _displayedMonth;
 
-  static const _calendarPageHeight = 384.0;
+  static const _calendarPageHeight = 452.0;
 
   @override
   void initState() {
@@ -103,6 +109,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   onOpenTodayFocusSheet: widget.onOpenTodayFocusSheet,
                   onPreviousMonth: _goToPreviousMonth,
                   onNextMonth: _goToNextMonth,
+                  onTodaySummaryTap: widget.onTodaySummaryTap,
+                  onWeekSummaryTap: widget.onWeekSummaryTap,
                 ),
                 _CategoryAnalysisPage(categoryCounts: widget.categoryCounts),
               ],
@@ -140,13 +148,17 @@ class _FlowDoCalendarPage extends StatelessWidget {
     required this.onOpenTodayFocusSheet,
     required this.onPreviousMonth,
     required this.onNextMonth,
+    this.onTodaySummaryTap,
+    this.onWeekSummaryTap,
   });
 
   final FlowDoCalendarMonthData calendarData;
-  final ValueChanged<DateTime> onDayTap;
+  final CalendarDayTapCallback onDayTap;
   final VoidCallback onOpenTodayFocusSheet;
   final VoidCallback onPreviousMonth;
   final VoidCallback onNextMonth;
+  final VoidCallback? onTodaySummaryTap;
+  final VoidCallback? onWeekSummaryTap;
 
   static const _weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -165,7 +177,11 @@ class _FlowDoCalendarPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _CalendarSummaryRow(summary: calendarData.summary),
+          _CalendarSummaryRow(
+            summary: calendarData.summary,
+            onTodayTap: onTodaySummaryTap,
+            onWeekTap: onWeekSummaryTap,
+          ),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -255,7 +271,7 @@ class _FlowDoCalendarPage extends StatelessWidget {
                       markers: markers,
                       primaryColor: colorScheme.primary,
                       standardTextColor: Theme.of(context).colorScheme.onSurface,
-                      onTap: () => onDayTap(day),
+                      onTap: () => onDayTap(day, calendarData.today),
                     );
                   },
                 );
@@ -287,47 +303,150 @@ class _FlowDoCalendarPage extends StatelessWidget {
 }
 
 class _CalendarSummaryRow extends StatelessWidget {
-  const _CalendarSummaryRow({required this.summary});
+  const _CalendarSummaryRow({
+    required this.summary,
+    this.onTodayTap,
+    this.onWeekTap,
+  });
 
   final FlowDoCalendarSummary summary;
+  final VoidCallback? onTodayTap;
+  final VoidCallback? onWeekTap;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final colors = Theme.of(context).extension<FlowDoColors>()!;
+
+    return Column(
+      key: const ValueKey('dashboard_summary_row'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SummaryBadge(emoji: '📌', count: summary.importantCount),
-        const SizedBox(width: 16),
-        _SummaryBadge(emoji: '🔥', count: summary.dueTodayCount),
-        const SizedBox(width: 16),
-        _SummaryBadge(emoji: '📅', count: summary.dueThisMonthCount),
+        if (summary.importantCount > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                const Text('📌', style: TextStyle(fontSize: 14, height: 1)),
+                const SizedBox(width: 4),
+                Text(
+                  '${summary.importantCount}件',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: colors.secondaryLabel,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        Row(
+          children: [
+            _FocusSummaryCard(
+              key: const ValueKey('dashboard_summary_today'),
+              emoji: '🔥',
+              label: '今日',
+              count: summary.dueTodayCount,
+              onTap: onTodayTap,
+            ),
+            const SizedBox(width: 10),
+            _FocusSummaryCard(
+              key: const ValueKey('dashboard_summary_within7days'),
+              emoji: '🗓️',
+              label: '7日以内',
+              count: summary.dueWithin7DaysCount,
+              onTap: onWeekTap,
+            ),
+          ],
+        ),
       ],
     );
   }
 }
 
-class _SummaryBadge extends StatelessWidget {
-  const _SummaryBadge({
+class _FocusSummaryCard extends StatelessWidget {
+  const _FocusSummaryCard({
+    super.key,
     required this.emoji,
+    required this.label,
     required this.count,
+    this.onTap,
   });
 
   final String emoji;
+  final String label;
   final int count;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(emoji, style: const TextStyle(fontSize: 15, height: 1)),
-        const SizedBox(width: 4),
-        Text(
-          '$count',
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
+    final colors = Theme.of(context).extension<FlowDoColors>()!;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    final content = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: colors.completedTaskSurface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                emoji,
+                style: const TextStyle(fontSize: 16, height: 1.1),
               ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: colors.secondaryLabel,
+                      fontWeight: FontWeight.w600,
+                      height: 1.1,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                '$count',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      height: 1,
+                      letterSpacing: -0.3,
+                    ),
+              ),
+              const SizedBox(width: 2),
+              Text(
+                '件',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colors.secondaryLabel,
+                      fontWeight: FontWeight.w500,
+                      height: 1,
+                    ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    return Expanded(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          splashColor: colorScheme.primary.withValues(alpha: 0.08),
+          highlightColor: colorScheme.primary.withValues(alpha: 0.04),
+          child: content,
         ),
-      ],
+      ),
     );
   }
 }

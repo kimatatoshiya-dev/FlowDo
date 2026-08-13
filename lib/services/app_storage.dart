@@ -36,10 +36,11 @@ class AppStorage {
       'flowdo_notification_permission_prompted';
   static const _maxPrefsAttempts = 20;
   static const _prefsRetryBaseDelay = Duration(milliseconds: 100);
-  static const _ensureReadyTimeout = Duration(seconds: 30);
+  static const _ensureReadyTimeout = Duration(seconds: 60);
 
   static SharedPreferences? _cachedPrefs;
   static bool _startupRestoreLogged = false;
+  static bool _startupPrefsKeysLogged = false;
   static Future<bool>? _ensureReadyFuture;
 
   /// SharedPreferences が利用可能か（タスクの自動保存先）
@@ -51,6 +52,23 @@ class AppStorage {
     _cachedPrefs = null;
     _ensureReadyFuture = null;
     _startupRestoreLogged = false;
+    _startupPrefsKeysLogged = false;
+  }
+
+  static void _logStartupSharedPreferencesKeys(SharedPreferences prefs) {
+    if (_startupPrefsKeysLogged) return;
+    _startupPrefsKeysLogged = true;
+
+    final keys = prefs.getKeys();
+    final tasksPayload = prefs.getString(_tasksKey);
+    final categoriesPayload = prefs.getString(_categoriesKey);
+    logDiagStartupSharedPreferencesKeys(
+      allKeys: keys,
+      hasTasksKey: keys.contains(_tasksKey),
+      hasCategoriesKey: keys.contains(_categoriesKey),
+      tasksPayloadBytes: tasksPayload?.length,
+      categoriesPayloadBytes: categoriesPayload?.length,
+    );
   }
 
   /// SharedPreferences が利用可能になるまで待つ（save/load の前提）
@@ -80,6 +98,11 @@ class AppStorage {
       final prefs = await _tryGetPrefs(maxAttempts: _maxPrefsAttempts);
       if (prefs != null) {
         _cachedPrefs = prefs;
+        logDiagEnsureReadyResult(
+          ready: true,
+          attempt: attempt,
+          phase: 'load',
+        );
         logTaskStorage('ensureReady succeeded on attempt $attempt');
         return true;
       }
@@ -90,6 +113,11 @@ class AppStorage {
     }
 
     logTaskStorage('ensureReady timed out after $attempt attempt(s)');
+    logDiagEnsureReadyResult(
+      ready: false,
+      attempt: attempt,
+      phase: 'load',
+    );
     return false;
   }
 
@@ -98,6 +126,11 @@ class AppStorage {
 
   /// 起動時に保存済みタスクを読み込み、復元結果をログ出力する
   static Future<List<Task>> loadStartupTasks() async {
+    final ready = await ensureReady();
+    if (ready && _cachedPrefs != null) {
+      _logStartupSharedPreferencesKeys(_cachedPrefs!);
+    }
+
     final snapshot = await _loadTasksInternal(
       forceRetry: true,
       diagSource: 'loadStartupTasks',
@@ -176,9 +209,20 @@ class AppStorage {
     String diagSource = 'internal',
     bool logStartupDiag = false,
   }) async {
+    logDiagLoadPipeline(
+      'L6',
+      'AppStorage._loadTasksInternal entered source=$diagSource',
+    );
     try {
       final ready = await ensureReady();
       if (!ready) {
+        logDiagLoadTasksOutcome(
+          source: diagSource,
+          outcome: TaskLoadDiagOutcome.storageUnavailable,
+          storageReady: false,
+          taskCount: 0,
+          errorMessage: 'ensureReady timed out',
+        );
         if (logStartupDiag) {
           logDiagStartupLoad(
             source: diagSource,
@@ -200,6 +244,13 @@ class AppStorage {
 
       final prefs = _cachedPrefs;
       if (prefs == null) {
+        logDiagLoadTasksOutcome(
+          source: diagSource,
+          outcome: TaskLoadDiagOutcome.storageUnavailable,
+          storageReady: false,
+          taskCount: 0,
+          errorMessage: 'SharedPreferences unavailable',
+        );
         return const _TaskLoadSnapshot(
           tasks: [],
           storageReady: false,
@@ -209,7 +260,14 @@ class AppStorage {
       }
 
       final jsonString = prefs.getString(_tasksKey);
-      if (jsonString == null || jsonString.isEmpty) {
+      if (jsonString == null) {
+        logDiagLoadTasksOutcome(
+          source: diagSource,
+          outcome: TaskLoadDiagOutcome.keyMissing,
+          storageReady: true,
+          taskCount: 0,
+          payloadBytes: null,
+        );
         if (logStartupDiag) {
           logDiagStartupLoad(
             source: diagSource,
@@ -227,6 +285,33 @@ class AppStorage {
         );
       }
 
+      if (jsonString.isEmpty || jsonString == '[]') {
+        logDiagLoadTasksOutcome(
+          source: diagSource,
+          outcome: TaskLoadDiagOutcome.emptyPayload,
+          storageReady: true,
+          taskCount: 0,
+          payloadBytes: jsonString.length,
+        );
+        if (logStartupDiag) {
+          logDiagStartupLoad(
+            source: diagSource,
+            storageReady: true,
+            hadPersistedPayload: false,
+            payloadBytes: jsonString.length,
+            taskCount: 0,
+            rawJson: jsonString,
+          );
+        }
+        return _TaskLoadSnapshot(
+          tasks: const [],
+          storageReady: true,
+          hadPersistedPayload: jsonString.isNotEmpty,
+          payloadBytes: jsonString.length,
+          rawJson: jsonString,
+        );
+      }
+
       if (logStartupDiag) {
         logDiagStartupLoad(
           source: diagSource,
@@ -241,6 +326,14 @@ class AppStorage {
       final decoded = jsonDecode(jsonString);
       if (decoded is! List<dynamic>) {
         logTaskStorage('invalid tasks payload: expected JSON array');
+        logDiagLoadTasksOutcome(
+          source: diagSource,
+          outcome: TaskLoadDiagOutcome.jsonDecodeFailure,
+          storageReady: true,
+          taskCount: 0,
+          payloadBytes: jsonString.length,
+          errorMessage: 'invalid JSON array',
+        );
         return _TaskLoadSnapshot(
           tasks: const [],
           storageReady: true,
@@ -266,6 +359,15 @@ class AppStorage {
       }
 
       Task.syncNextId(tasks);
+      logDiagLoadTasksOutcome(
+        source: diagSource,
+        outcome: tasks.isEmpty
+            ? TaskLoadDiagOutcome.emptyPayload
+            : TaskLoadDiagOutcome.success,
+        storageReady: true,
+        taskCount: tasks.length,
+        payloadBytes: jsonString.length,
+      );
       return _TaskLoadSnapshot(
         tasks: tasks,
         storageReady: true,
@@ -276,6 +378,13 @@ class AppStorage {
     } catch (error, stack) {
       logTaskStorage('failed to load tasks: $error');
       debugPrint(stack.toString());
+      logDiagLoadTasksOutcome(
+        source: diagSource,
+        outcome: TaskLoadDiagOutcome.jsonDecodeFailure,
+        storageReady: isStorageReady,
+        taskCount: 0,
+        errorMessage: error.toString(),
+      );
       if (logStartupDiag) {
         logDiagStartupLoad(
           source: diagSource,
@@ -306,15 +415,21 @@ class AppStorage {
     return 0;
   }
 
-  static Future<void> saveTasks(List<Task> tasks) async {
+  static Future<void> saveTasks(
+    List<Task> tasks, {
+    bool allowEmptyOverwrite = false,
+  }) async {
     try {
       final ready = await ensureReady();
       if (!ready) {
-        logDiagAfterSaveTasks(
+        logDiagSaveTasksDetail(
+          storageKey: _tasksKey,
           savedTaskCount: tasks.length,
+          savedPayloadBytes: 0,
           storageReady: false,
           setStringResult: null,
           verified: false,
+          succeeded: false,
           errorMessage: 'ensureReady timed out',
         );
         logTaskAutoSave(
@@ -327,28 +442,64 @@ class AppStorage {
 
       final prefs = _cachedPrefs;
       if (prefs == null) {
-        logDiagAfterSaveTasks(
+        logDiagSaveTasksDetail(
+          storageKey: _tasksKey,
           savedTaskCount: tasks.length,
+          savedPayloadBytes: 0,
           storageReady: false,
           setStringResult: null,
           verified: false,
+          succeeded: false,
           errorMessage: 'SharedPreferences unavailable after ensureReady',
         );
         return;
       }
 
+      final existingPayload = prefs.getString(_tasksKey);
+      if (tasks.isEmpty &&
+          !allowEmptyOverwrite &&
+          existingPayload != null &&
+          existingPayload.isNotEmpty &&
+          existingPayload != '[]') {
+        logDiagEmptySaveAttempt(
+          incomingTaskCount: 0,
+          existingPayloadBytes: existingPayload.length,
+          caller: 'AppStorage.saveTasks',
+        );
+        logDiagSaveTasksDetail(
+          storageKey: _tasksKey,
+          savedTaskCount: 0,
+          savedPayloadBytes: 0,
+          storageReady: true,
+          setStringResult: false,
+          verified: false,
+          succeeded: false,
+          errorMessage: 'refused empty save over existing payload',
+        );
+        logTaskAutoSave(
+          taskCount: 0,
+          storageReady: true,
+          verified: false,
+        );
+        return;
+      }
+
       final jsonString = jsonEncode(tasks.map((t) => t.toJson()).toList());
+      final savedPayloadBytes = jsonString.length;
       final saved = await prefs.setString(_tasksKey, jsonString);
       var verified = saved;
       if (kDebugMode) {
         final readBack = prefs.getString(_tasksKey);
         verified = saved && readBack == jsonString;
       }
-      logDiagAfterSaveTasks(
+      logDiagSaveTasksDetail(
+        storageKey: _tasksKey,
         savedTaskCount: tasks.length,
+        savedPayloadBytes: savedPayloadBytes,
         storageReady: true,
         setStringResult: saved,
         verified: verified,
+        succeeded: saved && verified,
       );
       logTaskAutoSave(
         taskCount: tasks.length,
@@ -361,11 +512,14 @@ class AppStorage {
     } catch (error, stack) {
       logTaskStorage('failed to save tasks: $error');
       debugPrint(stack.toString());
-      logDiagAfterSaveTasks(
+      logDiagSaveTasksDetail(
+        storageKey: _tasksKey,
         savedTaskCount: tasks.length,
+        savedPayloadBytes: 0,
         storageReady: isStorageReady,
         setStringResult: false,
         verified: false,
+        succeeded: false,
         errorMessage: error.toString(),
       );
       logTaskAutoSave(

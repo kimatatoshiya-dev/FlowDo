@@ -58,10 +58,7 @@ List<TodayFocusSectionData> _singleImportantSection(int taskId) {
 
 Finder _taskCheckbox(String title) {
   return find.descendant(
-    of: find.ancestor(
-      of: find.text(title, skipOffstage: false),
-      matching: find.byType(Dismissible),
-    ),
+    of: taskTileForTitle(title),
     matching: find.byKey(const ValueKey('task_completion_checkbox')),
   );
 }

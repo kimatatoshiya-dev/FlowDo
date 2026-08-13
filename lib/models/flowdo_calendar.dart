@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../utils/japanese_holidays.dart';
+import 'category_item.dart';
 import 'task.dart';
 
 /// カレンダー上のタスク種別
@@ -17,12 +18,55 @@ class FlowDoCalendarTaskEntry {
     required this.title,
     required this.kind,
     this.reminderTime,
+    this.categoryColorValue = 0xFF8E8E93,
   });
 
   final int taskId;
   final String title;
   final FlowDoCalendarTaskKind kind;
   final TimeOfDay? reminderTime;
+  final int categoryColorValue;
+}
+
+/// BottomSheet 上部サマリー（表示中タスクの種別件数）
+class CalendarDaySheetSummary {
+  const CalendarDaySheetSummary({
+    required this.dueTodayCount,
+    required this.importantCount,
+    required this.scheduledCount,
+  });
+
+  final int dueTodayCount;
+  final int importantCount;
+  final int scheduledCount;
+
+  bool get hasAny =>
+      dueTodayCount > 0 || importantCount > 0 || scheduledCount > 0;
+
+  factory CalendarDaySheetSummary.fromEntries(
+    List<FlowDoCalendarTaskEntry> entries,
+  ) {
+    var dueTodayCount = 0;
+    var importantCount = 0;
+    var scheduledCount = 0;
+
+    for (final entry in entries) {
+      switch (entry.kind) {
+        case FlowDoCalendarTaskKind.important:
+          importantCount++;
+        case FlowDoCalendarTaskKind.dueToday:
+          dueTodayCount++;
+        case FlowDoCalendarTaskKind.scheduled:
+          scheduledCount++;
+      }
+    }
+
+    return CalendarDaySheetSummary(
+      dueTodayCount: dueTodayCount,
+      importantCount: importantCount,
+      scheduledCount: scheduledCount,
+    );
+  }
 }
 
 /// カレンダー上部の件数サマリー
@@ -30,11 +74,13 @@ class FlowDoCalendarSummary {
   const FlowDoCalendarSummary({
     required this.importantCount,
     required this.dueTodayCount,
+    required this.dueWithin7DaysCount,
     required this.dueThisMonthCount,
   });
 
   final int importantCount;
   final int dueTodayCount;
+  final int dueWithin7DaysCount;
   final int dueThisMonthCount;
 }
 
@@ -102,16 +148,20 @@ FlowDoCalendarMonthData buildFlowDoCalendarMonth({
 
   var importantCount = 0;
   var dueTodayCount = 0;
+  var dueWithin7DaysCount = 0;
   var dueThisMonthCount = 0;
+  final weekEnd = referenceToday.add(const Duration(days: 7));
 
   for (final task in incomplete) {
     if (task.isFavorite) importantCount++;
-    if (task.dueDate != null &&
-        isSameDay(dateOnly(task.dueDate!), referenceToday)) {
-      dueTodayCount++;
-    }
     if (task.dueDate != null) {
       final due = dateOnly(task.dueDate!);
+      if (isSameDay(due, referenceToday)) {
+        dueTodayCount++;
+      }
+      if (!due.isBefore(referenceToday) && !due.isAfter(weekEnd)) {
+        dueWithin7DaysCount++;
+      }
       if (!due.isBefore(monthStart) && !due.isAfter(monthEnd)) {
         dueThisMonthCount++;
       }
@@ -160,6 +210,7 @@ FlowDoCalendarMonthData buildFlowDoCalendarMonth({
     summary: FlowDoCalendarSummary(
       importantCount: importantCount,
       dueTodayCount: dueTodayCount,
+      dueWithin7DaysCount: dueWithin7DaysCount,
       dueThisMonthCount: dueThisMonthCount,
     ),
     dayMarkers: markers,
@@ -167,34 +218,70 @@ FlowDoCalendarMonthData buildFlowDoCalendarMonth({
   );
 }
 
+/// 指定日のセルにタスクが属するか（カレンダーマーカーと同じ基準）
+bool taskBelongsToCalendarDay({
+  required Task task,
+  required DateTime day,
+  required DateTime today,
+}) {
+  if (task.isCompleted) return false;
+
+  final targetDay = dateOnly(day);
+  final referenceToday = dateOnly(today);
+
+  if (task.isFavorite && task.dueDate == null) {
+    return isSameDay(targetDay, referenceToday);
+  }
+
+  if (task.dueDate == null) return false;
+
+  return isSameDay(dateOnly(task.dueDate!), targetDay);
+}
+
+/// 指定日 BottomSheet 用のタスク種別（マーカー表示と同じ基準）
+FlowDoCalendarTaskKind? calendarTaskKindForDay({
+  required Task task,
+  required DateTime day,
+  required DateTime today,
+}) {
+  if (!taskBelongsToCalendarDay(task: task, day: day, today: today)) {
+    return null;
+  }
+
+  final targetDay = dateOnly(day);
+  final referenceToday = dateOnly(today);
+
+  if (task.isFavorite &&
+      (task.dueDate == null || isSameDay(dateOnly(task.dueDate!), targetDay))) {
+    return FlowDoCalendarTaskKind.important;
+  }
+
+  if (isSameDay(targetDay, referenceToday)) {
+    return FlowDoCalendarTaskKind.dueToday;
+  }
+
+  return FlowDoCalendarTaskKind.scheduled;
+}
+
 /// 指定日の BottomSheet 用タスク一覧
 List<FlowDoCalendarTaskEntry> calendarTasksForDay({
   required List<Task> tasks,
   required DateTime day,
   DateTime? today,
+  List<CategoryItem> categories = const [],
 }) {
-  final targetDay = dateOnly(day);
   final referenceToday = dateOnly(today ?? DateTime.now());
   final entries = <FlowDoCalendarTaskEntry>[];
 
   for (final task in tasks) {
-    if (task.isCompleted) continue;
-
-    FlowDoCalendarTaskKind? kind;
-
-    if (task.isFavorite && task.dueDate == null && isSameDay(targetDay, referenceToday)) {
-      kind = FlowDoCalendarTaskKind.important;
-    } else if (task.dueDate != null && isSameDay(task.dueDate!, targetDay)) {
-      if (task.isFavorite) {
-        kind = FlowDoCalendarTaskKind.important;
-      } else if (isSameDay(targetDay, referenceToday)) {
-        kind = FlowDoCalendarTaskKind.dueToday;
-      } else {
-        kind = FlowDoCalendarTaskKind.scheduled;
-      }
-    }
-
+    final kind = calendarTaskKindForDay(
+      task: task,
+      day: day,
+      today: referenceToday,
+    );
     if (kind == null) continue;
+
+    final category = resolveCategory(task.categoryId, categories);
 
     entries.add(
       FlowDoCalendarTaskEntry(
@@ -202,6 +289,7 @@ List<FlowDoCalendarTaskEntry> calendarTasksForDay({
         title: task.title,
         kind: kind,
         reminderTime: task.reminderTime,
+        categoryColorValue: category.colorValue,
       ),
     );
   }
