@@ -72,7 +72,6 @@ void main() {
     await repository.syncTasks([first, second]);
 
     first.isFavorite = true;
-    first.pinnedAt = DateTime(2026, 1, 1, 12);
     await repository.updateTask(first);
 
     final loaded = await repository.loadTasks();

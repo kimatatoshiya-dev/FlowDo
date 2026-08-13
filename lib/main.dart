@@ -17,6 +17,7 @@ import 'models/task.dart';
 import 'models/task_priority.dart';
 import 'models/task_edit_result.dart';
 import 'models/task_sort_mode.dart';
+import 'models/task_repeat_type.dart';
 import 'models/flowdo_calendar.dart';
 import 'models/today_focus.dart';
 import 'models/today_focus_completion_message.dart';
@@ -25,6 +26,7 @@ import 'models/feedback_preferences.dart';
 import 'models/flowdo_data_snapshot.dart';
 import 'models/notification_preferences.dart';
 import 'screens/settings_page.dart';
+import 'screens/today_page.dart';
 import 'services/app_storage.dart';
 import 'services/auth/auth_service.dart';
 import 'services/completed_task_cleanup.dart';
@@ -46,6 +48,8 @@ import 'widgets/category_name_dialog.dart';
 import 'widgets/calendar_day_task_sheet.dart';
 import 'widgets/home_dashboard.dart';
 import 'widgets/inbox_category_picker_sheet.dart';
+import 'widgets/inbox_destination_selector.dart';
+import 'widgets/inbox_group_preview_bar.dart';
 import 'widgets/inbox_organization_progress.dart';
 import 'widgets/flowdo_toast.dart';
 import 'widgets/organize_tasks_button.dart';
@@ -454,8 +458,10 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   String? _lastRegistrationCategoryId;
   final TextEditingController _inputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final PageController _homePageViewController = PageController();
   final GlobalKey _inputSectionKey = GlobalKey();
-  final GlobalKey _recentTasksAnchorKey = GlobalKey();
+  final GlobalKey _inboxSectionAnchorKey = GlobalKey();
+  final GlobalKey _categoryFilterAnchorKey = GlobalKey();
   final GlobalKey<TaskInputBarState> _taskInputBarKey = GlobalKey();
   bool _isLoading = true;
   bool _inputFocused = false;
@@ -466,17 +472,13 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   final Set<String> _inboxSelectedCategoryIds = {};
   TaskSortMode _sortMode = TaskSortMode.priority;
   Timer? _layoutChangeTimer;
-  Timer? _pinLayoutTimer;
   TaskSortMode? _pendingLayoutSortMode;
   final Set<int> _deferredFilterTaskIds = {};
-  final Set<int> _deferredPinTaskIds = {};
   final Set<int> _layoutHighlightTaskIds = {};
   final Set<int> _layoutAnimatingTaskIds = {};
   final Set<int> _registrationFeedbackTaskIds = {};
   final Map<int, bool> _pendingFavoriteByTaskId = {};
   static const _layoutChangeDelay = Duration(milliseconds: 2500);
-  static const _pinLayoutDelay = Duration(milliseconds: 700);
-  static const _pinLayoutHighlightDelay = Duration(milliseconds: 180);
   static const _dataSyncAdapter = LocalFileDataSyncAdapter();
   static const _layoutHighlightDelay = Duration(milliseconds: 400);
   static const _registrationFeedbackDuration = Duration(milliseconds: 500);
@@ -519,11 +521,14 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       startupProbe('⑥ FlowDoHomePage loading timeout fallback');
       setState(() => _isLoading = false);
     });
+    widget.taskNotificationService.onNotificationTap =
+        _openTaskFromNotification;
     unawaited(
       runAfterFirstFrame(() async {
         startupTrace('FlowDoHomePage.runAfterFirstFrame callback start');
         await _loadMetadata();
         startupTrace('FlowDoHomePage._loadMetadata done');
+        await _consumeNotificationLaunch();
       }),
     );
   }
@@ -592,8 +597,38 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     }
   }
 
+  void _openTaskFromNotification(int taskId) {
+    if (!mounted) return;
+
+    Task? task;
+    for (final candidate in _tasks) {
+      if (candidate.id == taskId) {
+        task = candidate;
+        break;
+      }
+    }
+    if (task == null) return;
+
+    unawaited(_showEditTaskSheet(task));
+  }
+
+  Future<void> _consumeNotificationLaunch() async {
+    if (!kTaskNotificationsEnabled || !mounted) return;
+
+    try {
+      final taskId =
+          await widget.taskNotificationService.readLaunchNotificationTaskId();
+      if (taskId == null || !mounted) return;
+      _openTaskFromNotification(taskId);
+    } catch (error, stack) {
+      debugPrint('Notification launch handling failed: $error');
+      debugPrint(stack.toString());
+    }
+  }
+
   @override
   void dispose() {
+    widget.taskNotificationService.onNotificationTap = null;
     startupProbe('⑥ FlowDoHomePage.dispose()');
     startupTrace('FlowDoHomePage.dispose');
     FlowDoHomeLoopDiag.stop();
@@ -602,8 +637,8 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     _cancelTaskRepositoryStream();
     _keyboardScrollTimer?.cancel();
     _layoutChangeTimer?.cancel();
-    _pinLayoutTimer?.cancel();
     _scrollController.dispose();
+    _homePageViewController.dispose();
     for (final timer in _completionTimers.values) {
       timer.cancel();
     }
@@ -648,7 +683,13 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   }
 
   bool _showsCompletedStyle(Task task) {
-    return task.isCompleted || _completingTaskIds.contains(task.id);
+    if (_completingTaskIds.contains(task.id)) return true;
+    return DailyRoutineLogic.isCompletedToday(task, DateTime.now());
+  }
+
+  bool _isListedAsCompleted(Task task) {
+    if (task.repeatType == TaskRepeatType.daily) return false;
+    return task.isCompleted;
   }
 
   void _refreshTodayFocusSheet() {
@@ -690,7 +731,9 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      showDragHandle: true,
+      isDismissible: true,
+      enableDrag: true,
+      showDragHandle: false,
       builder: (context) => ValueListenableBuilder<int>(
         valueListenable: _todayFocusSheetRevision,
         builder: (context, _, __) => CalendarDayTaskSheet(
@@ -774,17 +817,35 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
           behavior: SnackBarBehavior.floating,
         ),
       );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_scrollToCategoryFilter());
+    });
   }
 
 
-  Future<void> _scrollToRecentlyAddedTasks() async {
+  Future<void> _scrollToInboxSection() => _scrollToAnchor(
+        _inboxSectionAnchorKey,
+        alignment: 0,
+        extraScrollOffset: 12,
+      );
+
+  Future<void> _scrollToCategoryFilter() =>
+      _scrollToAnchor(_categoryFilterAnchorKey, alignment: 0);
+
+  Future<void> _scrollToAnchor(
+    GlobalKey anchorKey, {
+    double alignment = 0.08,
+    double extraScrollOffset = 0,
+  }) async {
     _taskInputBarKey.currentState?.unfocus();
     FocusManager.instance.primaryFocus?.unfocus();
 
     await Future<void>.delayed(const Duration(milliseconds: 120));
     if (!mounted) return;
 
-    final targetContext = _recentTasksAnchorKey.currentContext;
+    final targetContext = anchorKey.currentContext;
     if (targetContext == null || !_scrollController.hasClients) return;
 
     final renderObject = targetContext.findRenderObject();
@@ -792,9 +853,10 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
 
     final viewport = RenderAbstractViewport.maybeOf(renderObject);
     if (viewport != null) {
-      final targetOffset = viewport
-          .getOffsetToReveal(renderObject, 0.08)
-          .offset
+      final targetOffset = (viewport
+              .getOffsetToReveal(renderObject, alignment)
+              .offset +
+          extraScrollOffset)
           .clamp(
             _scrollController.position.minScrollExtent,
             _scrollController.position.maxScrollExtent,
@@ -811,7 +873,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       targetContext,
       duration: const Duration(milliseconds: 450),
       curve: Curves.easeOutCubic,
-      alignment: 0.08,
+      alignment: alignment,
     );
   }
 
@@ -825,7 +887,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         ..hideCurrentSnackBar()
         ..showSnackBar(
           const SnackBar(
-            content: Text('📌 をタップするとタスクを最上位へ固定できます'),
+            content: Text('📌 をタップすると重要に設定できます'),
             duration: Duration(seconds: 3),
             behavior: SnackBarBehavior.floating,
           ),
@@ -834,27 +896,14 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     });
   }
 
-  void _showPinFeedback({required bool pinned}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(pinned ? '最重要に固定しました' : '固定を解除しました'),
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-  }
-
-  void _showInboxPinFeedback({required bool pinned}) {
+  void _showImportantFeedback({required bool important}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
           content: Text(
-            pinned ? '📌 重要に設定しました' : '📌 重要を解除しました',
+            important ? '📌 重要に設定しました' : '📌 重要を解除しました',
           ),
           duration: const Duration(seconds: 2),
           behavior: SnackBarBehavior.floating,
@@ -952,51 +1001,6 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     });
   }
 
-  Future<void> _finalizeDeferredPinLayout() async {
-    _pinLayoutTimer?.cancel();
-    _pinLayoutTimer = null;
-
-    final tasksToMove = Set<int>.from(_deferredPinTaskIds);
-    if (tasksToMove.isEmpty) return;
-
-    _layoutHighlightTaskIds.addAll(tasksToMove);
-    setState(() {});
-    await Future<void>.delayed(_pinLayoutHighlightDelay);
-    if (!mounted) return;
-
-    _layoutHighlightTaskIds.removeAll(tasksToMove);
-    _deferredPinTaskIds.removeAll(tasksToMove);
-
-    final moves = <Task>[];
-    for (final taskId in tasksToMove) {
-      final index = _tasks.indexWhere((task) => task.id == taskId);
-      if (index < 0) continue;
-      moves.add(_tasks[index]);
-    }
-    moves.sort((a, b) {
-      final pinnedCompare = comparePinnedOrder(a, b);
-      if (pinnedCompare != 0) return pinnedCompare;
-      return a.id.compareTo(b.id);
-    });
-
-    await _updateTasks(() {
-      for (final task in moves) {
-        final index = _tasks.indexWhere((element) => element.id == task.id);
-        if (index < 0) continue;
-        _tasks.removeAt(index);
-        _tasks.insert(
-          pinReorderIndex(
-            tasks: _tasks,
-            task: task,
-            sortMode: _sortMode,
-            categories: _categories,
-          ),
-          task,
-        );
-      }
-    });
-  }
-
   Future<void> _finalizeDeferredLayout() async {
     _layoutChangeTimer?.cancel();
     _layoutChangeTimer = null;
@@ -1073,7 +1077,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
           a.dueDate != b.dueDate ||
           a.reminderTime != b.reminderTime ||
           a.completedAt != b.completedAt ||
-          a.pinnedAt != b.pinnedAt) {
+          a.repeatType != b.repeatType) {
         return false;
       }
     }
@@ -1094,6 +1098,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       }
 
       CompletedTaskCleanup.backfillCompletionTimestamps(tasks);
+      final resetChanged = DailyRoutineLogic.resetExpiredDailyTasks(tasks);
       final retainedTasks = CompletedTaskCleanup.filterExpired(
         tasks,
         widget.completedTaskRetention,
@@ -1154,7 +1159,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         _isLoading = false;
       });
 
-      if (retainedTasks.length != tasks.length) {
+      if (retainedTasks.length != tasks.length || resetChanged) {
         unawaited(_syncFilteredTasksToRepository(updatedTasks));
       }
 
@@ -1184,11 +1189,6 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     if (existing == null) {
       if (favoriteUpdatePending && pendingFavorite != null) {
         remote.isFavorite = pendingFavorite;
-        if (pendingFavorite) {
-          remote.pinnedAt ??= DateTime.now();
-        } else {
-          remote.pinnedAt = null;
-        }
       }
       return remote;
     }
@@ -1201,26 +1201,18 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       ..priorityStars = remote.priorityStars
       ..dueDate = remote.dueDate
       ..reminderTime = remote.reminderTime
-      ..completedAt = remote.completedAt;
+      ..completedAt = remote.completedAt
+      ..repeatType = remote.repeatType;
 
-    // Firestore snapshot must not overwrite isFavorite while an update is pending.
-    // Clear pending only after the remote document matches the intended value.
     if (favoriteUpdatePending) {
       if (pendingFavorite != null && remote.isFavorite == pendingFavorite) {
         _pendingFavoriteByTaskId.remove(taskId);
         existing.isFavorite = remote.isFavorite;
-        existing.pinnedAt = remote.pinnedAt;
       } else if (pendingFavorite != null) {
         existing.isFavorite = pendingFavorite;
-        if (pendingFavorite) {
-          existing.pinnedAt ??= DateTime.now();
-        } else {
-          existing.pinnedAt = null;
-        }
       }
     } else {
       existing.isFavorite = remote.isFavorite;
-      existing.pinnedAt = remote.isFavorite ? remote.pinnedAt : null;
     }
 
     return existing;
@@ -1272,10 +1264,10 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   }
 
   Future<void> _deleteAllCompletedTasks() async {
-    if (_tasks.every((task) => !task.isCompleted)) return;
+    if (_tasks.every((task) => !_isListedAsCompleted(task))) return;
 
     await _updateTasks(() {
-      _tasks.removeWhere((task) => task.isCompleted);
+      _tasks.removeWhere((task) => _isListedAsCompleted(task));
     });
   }
 
@@ -1466,12 +1458,10 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         widget.notificationPreferences,
       );
 
-      if (task.reminderTime == null ||
-          task.dueDate == null ||
-          task.isCompleted ||
-          !widget.notificationPreferences.enabled ||
-          widget.notificationPreferences.leadTime ==
-              NotificationLeadTime.none) {
+      if (!shouldScheduleTaskNotification(
+        task,
+        widget.notificationPreferences,
+      )) {
         await widget.taskNotificationService.cancelTask(task.id);
         return;
       }
@@ -1657,8 +1647,10 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     setState(() {});
     if (registeredIds.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        unawaited(_scrollToRecentlyAddedTasks());
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          unawaited(_scrollToInboxSection());
+        });
       });
     }
     unawaited(widget.feedbackService.play(FeedbackEvent.taskRegistered));
@@ -1676,18 +1668,14 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       return true;
     }).toList();
 
-    list.sort((a, b) {
-      final pinnedCompare = comparePinnedOrder(a, b);
-      if (pinnedCompare != 0) return pinnedCompare;
-      return b.createdAt.compareTo(a.createdAt);
-    });
+    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return list;
   }
 
   List<Task> _filteredTasks({required bool completed}) {
     final list = _tasks.where((task) {
       if (task.isInbox) return false;
-      if (task.isCompleted != completed) return false;
+      if (_isListedAsCompleted(task) != completed) return false;
       if (_categoryFilterIds.isNotEmpty &&
           !_categoryFilterIds.contains(task.categoryId) &&
           !_deferredFilterTaskIds.contains(task.id)) {
@@ -1707,18 +1695,14 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
 
   /// 2.5秒待機中のタスクは現在位置を維持し、それ以外だけ並び替える
   List<Task> _sortPendingPreservingDeferred(List<Task> list) {
-    if (_deferredFilterTaskIds.isEmpty && _deferredPinTaskIds.isEmpty) {
+    if (_deferredFilterTaskIds.isEmpty) {
       list.sort((a, b) => compareTasksBySortMode(a, b, _sortMode, _categories));
       return list;
     }
 
     final sortedOthers =
         list
-            .where(
-              (task) =>
-                  !_deferredFilterTaskIds.contains(task.id) &&
-                  !_deferredPinTaskIds.contains(task.id),
-            )
+            .where((task) => !_deferredFilterTaskIds.contains(task.id))
             .toList()
           ..sort(
             (a, b) => compareTasksBySortMode(a, b, _sortMode, _categories),
@@ -1727,8 +1711,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     var otherIndex = 0;
     return [
       for (final task in list)
-        if (_deferredFilterTaskIds.contains(task.id) ||
-            _deferredPinTaskIds.contains(task.id))
+        if (_deferredFilterTaskIds.contains(task.id))
           task
         else
           sortedOthers[otherIndex++],
@@ -1737,10 +1720,8 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
 
   Future<void> _applySort(TaskSortMode mode) async {
     _layoutChangeTimer?.cancel();
-    _pinLayoutTimer?.cancel();
     _pendingLayoutSortMode = null;
     _deferredFilterTaskIds.clear();
-    _deferredPinTaskIds.clear();
     _layoutHighlightTaskIds.clear();
     _layoutAnimatingTaskIds.clear();
     setState(() => _sortMode = mode);
@@ -1843,7 +1824,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     await _applySort(selected);
   }
 
-  int get _pinnedCount =>
+  int get _importantCount =>
       _tasks.where((t) => !t.isCompleted && t.isFavorite).length;
   int get _dueTodayCount =>
       _tasks.where((t) => !t.isCompleted && t.isDueToday).length;
@@ -1854,7 +1835,11 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     final important = _tasks
         .where((task) => !task.isCompleted && task.isFavorite)
         .toList()
-      ..sort(comparePinnedOrder);
+      ..sort((a, b) {
+        final priorityCompare = b.priorityStars.compareTo(a.priorityStars);
+        if (priorityCompare != 0) return priorityCompare;
+        return a.title.compareTo(b.title);
+      });
 
     final dueToday = _tasks
         .where((task) => !task.isCompleted && task.isDueToday)
@@ -1917,32 +1902,11 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     return result;
   }
 
-  Future<void> _reorderPinnedTasks(
-    List<Task> reorderedPinned, {
-    required bool isInbox,
-  }) async {
-    if (reorderedPinned.length < 2) return;
-
-    applyPinnedAtOrder(reorderedPinned);
-    final pinnedIds = reorderedPinned.map((task) => task.id).toSet();
-
-    await _updateTasks(() {
-      final startIdx = _tasks.indexWhere(
-        (task) =>
-            task.isFavorite &&
-            task.isInbox == isInbox &&
-            !task.isCompleted &&
-            pinnedIds.contains(task.id),
-      );
-      if (startIdx < 0) return;
-
-      _tasks.removeWhere((task) => pinnedIds.contains(task.id));
-      _tasks.insertAll(startIdx, reorderedPinned);
-    });
-  }
-
   Future<void> _showEditTaskSheet(Task task) async {
-    final result = await TaskEditSheet.show(context, title: task.title);
+    final result = await TaskEditSheet.show(
+      context,
+      title: task.title,
+    );
     if (!mounted || result == null) return;
 
     switch (result) {
@@ -1975,7 +1939,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   }
 
   Future<void> _showInboxCategoryPicker(Task task) async {
-    final categoryId = await InboxCategoryPickerSheet.show(
+    final categoryId = await InboxCategoryPickerSheet.showForTask(
       context,
       categories: _categories,
       selectedCategoryId: task.categoryId,
@@ -2008,6 +1972,28 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
           behavior: SnackBarBehavior.floating,
         ),
       );
+  }
+
+  Future<void> _showInboxDestinationPicker() async {
+    final currentId = _inboxSelectedCategoryIds.length == 1
+        ? _inboxSelectedCategoryIds.first
+        : null;
+
+    final pickedId = await InboxCategoryPickerSheet.showForDestination(
+      context,
+      categories: _categories,
+      selectedCategoryId: currentId,
+    );
+    if (!mounted) return;
+
+    if (pickedId == null) {
+      if (currentId == null) return;
+      setState(() => _inboxSelectedCategoryIds.clear());
+      return;
+    }
+
+    // 最後に選択した操作が優先 — 同じ全体カテゴリーでも全タスクへ再適用
+    await _onInboxCategoryBarSelected(pickedId);
   }
 
   Future<void> _onInboxCategoryBarSelected(String? categoryId) async {
@@ -2045,68 +2031,37 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     unawaited(_markInboxGuidanceSeenIfNeeded());
   }
 
-  Future<void> _togglePin(Task task) async {
+  Future<void> _toggleImportant(Task task) async {
     if (!mounted) return;
 
     final index = _tasks.indexWhere((element) => element.id == task.id);
     if (index < 0) return;
 
     final target = _tasks[index];
-    final pinned = !target.isFavorite;
-    final previousPinnedAt = target.pinnedAt;
-    _pendingFavoriteByTaskId[target.id] = pinned;
+    final important = !target.isFavorite;
+    _pendingFavoriteByTaskId[target.id] = important;
 
     if (_showFavoriteGuidance) {
       _showFavoriteGuidance = false;
       unawaited(AppStorage.markFavoriteGuidanceSeen());
     }
 
-    final wasDeferred = _deferredPinTaskIds.remove(target.id);
-    if (_deferredPinTaskIds.isEmpty) {
-      _pinLayoutTimer?.cancel();
-      _pinLayoutTimer = null;
-    }
-
     try {
-      if (!target.isInbox && !wasDeferred) {
-        _deferredPinTaskIds.add(target.id);
-      }
-
       await _updateTasks(() {
-        target.isFavorite = pinned;
-        target.pinnedAt = pinned ? DateTime.now() : null;
-
-        if (target.isInbox) {
-          // Inbox では重要設定のみ。未完了リストへの移動は「整理する」ボタンのみ。
-          return;
-        }
+        target.isFavorite = important;
       });
 
-      if (!target.isInbox && !wasDeferred) {
-        _pinLayoutTimer?.cancel();
-        _pinLayoutTimer = Timer(_pinLayoutDelay, () {
-          if (!mounted) return;
-          unawaited(_finalizeDeferredPinLayout());
-        });
-      }
-
       if (mounted) {
-        if (target.isInbox) {
-          _showInboxPinFeedback(pinned: pinned);
-        } else {
-          _showPinFeedback(pinned: pinned);
-        }
+        _showImportantFeedback(important: important);
       }
     } catch (error, stack) {
-      debugPrint('Failed to update pin: $error');
+      debugPrint('Failed to update important: $error');
       debugPrint(stack.toString());
       if (!mounted) return;
       final revertIndex = _tasks.indexWhere((element) => element.id == task.id);
       if (revertIndex < 0) return;
       setState(() {
-        _tasks[revertIndex].isFavorite = !pinned;
-        _tasks[revertIndex].pinnedAt = previousPinnedAt;
-        _deferredPinTaskIds.remove(target.id);
+        _tasks[revertIndex].isFavorite = !important;
       });
       _pendingFavoriteByTaskId.remove(target.id);
     }
@@ -2126,53 +2081,30 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     _scheduleDeferredLayout(taskId: task.id, sortMode: TaskSortMode.priority);
   }
 
-  Future<void> _pickDueDate(Task task) async {
-    if (task.dueDate == null) {
-      await _startDueDateTimeFlow(task);
-      return;
-    }
-
+  Future<void> _showTaskDueDateTimeSheet(
+    Task task, {
+    bool promptForTimeOnOpen = false,
+  }) async {
     await TaskDueDateTimeSheet.show(
       context,
       initialDueDate: task.dueDate,
       initialReminderTime: task.reminderTime,
+      initialRepeatType: task.repeatType,
+      promptForTimeOnOpen: promptForTimeOnOpen,
       notificationPreferences: widget.notificationPreferences,
       notificationsFeatureEnabled: kTaskNotificationsEnabled,
       checkNotificationPermission: widget.taskNotificationService.hasPermissions,
       onRequestNotificationPermission:
           widget.taskNotificationService.requestPermissions,
       onDueDateChanged: (dueDate) => _applyDueDate(task, dueDate),
-      onReminderTimeChanged: (reminderTime) => _applyReminderTime(task, reminderTime),
+      onReminderTimeChanged: (reminderTime) =>
+          _applyReminderTime(task, reminderTime),
+      onRepeatTypeChanged: (repeatType) => _applyRepeatType(task, repeatType),
     );
   }
 
-  Future<void> _startDueDateTimeFlow(Task task) async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: now,
-      firstDate: now.subtract(const Duration(days: 365)),
-      lastDate: now.add(const Duration(days: 365 * 5)),
-    );
-    if (!mounted || picked == null) return;
-
-    final due = DateTime(picked.year, picked.month, picked.day);
-    await _applyDueDate(task, due);
-    if (!mounted) return;
-
-    await TaskDueDateTimeSheet.show(
-      context,
-      initialDueDate: due,
-      initialReminderTime: null,
-      promptForTimeOnOpen: true,
-      notificationPreferences: widget.notificationPreferences,
-      notificationsFeatureEnabled: kTaskNotificationsEnabled,
-      checkNotificationPermission: widget.taskNotificationService.hasPermissions,
-      onRequestNotificationPermission:
-          widget.taskNotificationService.requestPermissions,
-      onDueDateChanged: (dueDate) => _applyDueDate(task, dueDate),
-      onReminderTimeChanged: (reminderTime) => _applyReminderTime(task, reminderTime),
-    );
+  Future<void> _pickDueDate(Task task) async {
+    await _showTaskDueDateTimeSheet(task);
   }
 
   Future<void> _applyDueDate(Task task, DateTime? dueDate) async {
@@ -2204,6 +2136,12 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   Future<void> _applyReminderTime(Task task, TimeOfDay? reminderTime) async {
     if (!mounted) return;
     await _updateTasks(() => task.reminderTime = reminderTime);
+    await _scheduleTaskNotificationIfNeeded(task);
+  }
+
+  Future<void> _applyRepeatType(Task task, TaskRepeatType repeatType) async {
+    if (!mounted) return;
+    await _updateTasks(() => task.repeatType = repeatType);
     await _scheduleTaskNotificationIfNeeded(task);
   }
 
@@ -2252,7 +2190,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       return;
     }
 
-    if (!task.isCompleted) {
+    if (!DailyRoutineLogic.isCompletedToday(task, DateTime.now())) {
       unawaited(widget.taskNotificationService.cancelTask(task.id));
       final todayFocusEntries =
           flattenTodayFocusSections(_todayFocusSections);
@@ -2337,13 +2275,21 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         recentTasks.isNotEmpty &&
         !_isOrganizing;
     final inboxCount = recentTasks.length;
+    final allInboxTasksCategorized = recentTasks.isNotEmpty &&
+        recentTasks.every(
+          (task) => task.categoryId != CategoryItem.uncategorizedId,
+        );
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
-            : CustomScrollView(
+            : PageView(
+                key: const ValueKey('flowdo_home_page_view'),
+                controller: _homePageViewController,
+                children: [
+                  CustomScrollView(
                 controller: _scrollController,
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
@@ -2381,18 +2327,21 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 16, 16, 0),
-                            child: Text(
-                              '追加したタスク'.toUpperCase(),
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelMedium
-                                  ?.copyWith(
-                                    color: colors.secondaryLabel,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 0.5,
-                                  ),
+                          KeyedSubtree(
+                            key: _inboxSectionAnchorKey,
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 16, 16, 0),
+                              child: Text(
+                                '整理待ちタスク'.toUpperCase(),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelMedium
+                                    ?.copyWith(
+                                      color: colors.secondaryLabel,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0.5,
+                                    ),
+                              ),
                             ),
                           ),
                           if (_showInboxGuidance && recentTasks.isNotEmpty)
@@ -2400,17 +2349,31 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                               padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
                               child: InboxGuidanceBanner(),
                             ),
+                          if (CategoryItem.filterBarCategories(_categories)
+                              .isNotEmpty)
+                            Padding(
+                              padding: EdgeInsets.only(
+                                top: _showInboxGuidance && recentTasks.isNotEmpty
+                                    ? 8
+                                    : 12,
+                              ),
+                              child: InboxGroupPreviewBar(
+                                key: const ValueKey('inbox_group_preview_bar'),
+                                categories: _categories,
+                                onAdd: _addCategory,
+                              ),
+                            ),
                           Padding(
                             padding: EdgeInsets.fromLTRB(
                               20,
                               _showInboxGuidance && recentTasks.isNotEmpty
-                                  ? 8
+                                  ? 12
                                   : 16,
                               16,
                               7,
                             ),
                             child: Text(
-                              '整理先',
+                              'カテゴリー（全体）',
                               style: Theme.of(context)
                                   .textTheme
                                   .bodySmall
@@ -2421,61 +2384,37 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                                   ),
                             ),
                           ),
-                          CategoryBar(
-                            key: const ValueKey('inbox_category_bar'),
+                          InboxDestinationSelector(
                             categories: _categories,
-                            selectedIds: _inboxSelectedCategoryIds,
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-                            addButtonKey: const ValueKey('inbox_category_add_chip'),
-                            onSelected: (id) {
-                              if (id == null) {
-                                setState(() => _inboxSelectedCategoryIds.clear());
-                                return;
-                              }
-                              if (_inboxSelectedCategoryIds.contains(id)) {
-                                setState(
-                                  () => _inboxSelectedCategoryIds.clear(),
-                                );
-                                return;
-                              }
-                              unawaited(_onInboxCategoryBarSelected(id));
-                            },
-                            onAdd: _addCategory,
-                            onRename: _renameCategory,
-                            onDelete: _deleteCategory,
+                            selectedCategoryId:
+                                _inboxSelectedCategoryIds.length == 1
+                                    ? _inboxSelectedCategoryIds.first
+                                    : null,
+                            onTap: () => unawaited(_showInboxDestinationPicker()),
                           ),
-                          KeyedSubtree(
-                            key: _recentTasksAnchorKey,
-                            child: recentTasks.isNotEmpty
-                                ? GroupedTaskList(
-                                    title: '追加したタスク',
-                                    tasks: recentTasks,
-                                    categories: _categories,
-                                    showCompletedStyle: _showsCompletedStyle,
-                                    isRemoving: _isOrganizingTask,
-                                    isRegistrationFeedback:
-                                        _isRegistrationFeedback,
-                                    showCompletionToggle: false,
-                                    openEditOnRowTap: true,
-                                    onToggle: _toggleTask,
-                                    onEdit: _showEditTaskSheet,
-                                    onDelete: _confirmDeleteTask,
-                                    onDismissDelete: _deleteTask,
-                                    onCategoryTap: _showInboxCategoryPicker,
-                                    onPriorityTap: _cyclePriority,
-                                    onDueDateTap: _pickDueDate,
-                                    onFavoriteTap: _togglePin,
-                                    enablePinnedReorder: true,
-                                    onPinnedReorder: (reordered) =>
-                                        _reorderPinnedTasks(
-                                      reordered,
-                                      isInbox: true,
-                                    ),
-                                    isInboxList: true,
-                                    showSectionTitle: false,
-                                  )
-                                : const SizedBox.shrink(),
-                          ),
+                          recentTasks.isNotEmpty
+                              ? GroupedTaskList(
+                                  title: '整理待ちタスク',
+                                  tasks: recentTasks,
+                                  categories: _categories,
+                                  showCompletedStyle: _showsCompletedStyle,
+                                  isRemoving: _isOrganizingTask,
+                                  isRegistrationFeedback:
+                                      _isRegistrationFeedback,
+                                  showCompletionToggle: false,
+                                  openEditOnRowTap: false,
+                                  onToggle: _toggleTask,
+                                  onEdit: _showEditTaskSheet,
+                                  onDelete: _confirmDeleteTask,
+                                  onDismissDelete: _deleteTask,
+                                  onCategoryTap: _showInboxCategoryPicker,
+                                  onPriorityTap: _cyclePriority,
+                                  onDueDateTap: _pickDueDate,
+                                  onFavoriteTap: _toggleImportant,
+                                  isInboxList: true,
+                                  showSectionTitle: false,
+                                )
+                              : const SizedBox.shrink(),
                           if (recentTasks.isNotEmpty)
                             InboxOrganizationProgress(
                               organizedCount: recentTasks
@@ -2493,6 +2432,8 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                                     )
                                   : OrganizeTasksButton(
                                       count: inboxCount,
+                                      allCategoriesAssigned:
+                                          allInboxTasksCategorized,
                                       onPressed: _onOrganizeButtonPressed,
                                     ),
                             ),
@@ -2509,13 +2450,15 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                   ),
                   if (!_isLoading)
                     SliverToBoxAdapter(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 16, 16, 7),
-                            child: Text(
-                              '表示するグループ',
+                      child: KeyedSubtree(
+                        key: _categoryFilterAnchorKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 16, 16, 7),
+                              child: Text(
+                                '表示するグループ',
                               style: Theme.of(context)
                                   .textTheme
                                   .bodySmall
@@ -2530,7 +2473,12 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                             key: const ValueKey('pending_category_filter_bar'),
                             categories: _categories,
                             selectedIds: _categoryFilterIds,
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                            padding: const EdgeInsets.fromLTRB(
+                              kCategoryBarHorizontalInset,
+                              0,
+                              kCategoryBarHorizontalInset,
+                              0,
+                            ),
                             addButtonKey:
                                 const ValueKey('pending_category_add_chip'),
                             onSelected: (id) {
@@ -2549,6 +2497,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                             onDelete: _deleteCategory,
                           ),
                         ],
+                        ),
                       ),
                     ),
                   if (_tasks.isEmpty && !hasFilter)
@@ -2586,7 +2535,6 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                           isLayoutHighlight: _isLayoutHighlight,
                           isLayoutAnimating: _isLayoutAnimating,
                           isRemoving: _isRemovingTask,
-                          pinLayoutDeferredTaskIds: _deferredPinTaskIds,
                           onToggle: _toggleTask,
                           onEdit: _showEditTaskSheet,
                           onDelete: _confirmDeleteTask,
@@ -2594,12 +2542,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                           onCategoryTap: _cycleCategory,
                           onPriorityTap: _cyclePriority,
                           onDueDateTap: _pickDueDate,
-                          onFavoriteTap: _togglePin,
-                          enablePinnedReorder: true,
-                          onPinnedReorder: (reordered) => _reorderPinnedTasks(
-                            reordered,
-                            isInbox: false,
-                          ),
+                          onFavoriteTap: _toggleImportant,
                         ),
                       ),
                     if (completedTasks.isNotEmpty)
@@ -2620,12 +2563,21 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                           onCategoryTap: _cycleCategory,
                           onPriorityTap: _cyclePriority,
                           onDueDateTap: _pickDueDate,
-                          onFavoriteTap: _togglePin,
+                          onFavoriteTap: _toggleImportant,
                         ),
                       ),
                   ],
                   const SliverToBoxAdapter(
                     child: SizedBox(height: 24),
+                  ),
+                ],
+              ),
+                  TodayPage(
+                    key: const ValueKey('flowdo_today_page'),
+                    embedded: true,
+                    tasks: _tasks,
+                    onRoutineToggle: (task) =>
+                        unawaited(_toggleTask(task)),
                   ),
                 ],
               ),

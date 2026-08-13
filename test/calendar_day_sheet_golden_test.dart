@@ -21,7 +21,7 @@ void main() {
           backgroundColor: const Color(0xFFF2F2F7),
           body: CalendarDayTaskSheet(
             day: today,
-            entries: const [
+            entries: [
               FlowDoCalendarTaskEntry(
                 taskId: 1,
                 title: 'ゆうと誕プレ',
@@ -33,12 +33,14 @@ void main() {
                 title: '今日のタスク',
                 kind: FlowDoCalendarTaskKind.dueToday,
                 reminderTime: TimeOfDay(hour: 10, minute: 30),
+                dueDate: DateTime(2026, 8, 13),
                 categoryColorValue: 0xFF007AFF,
               ),
               FlowDoCalendarTaskEntry(
                 taskId: 3,
                 title: '7日以内のタスク',
                 kind: FlowDoCalendarTaskKind.dueToday,
+                dueDate: DateTime(2026, 8, 13),
                 categoryColorValue: 0xFF34C759,
               ),
             ],

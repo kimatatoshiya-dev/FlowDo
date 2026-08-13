@@ -10,9 +10,15 @@ import 'package:timezone/timezone.dart' as tz;
 import '../config/app_features.dart';
 import '../models/notification_preferences.dart';
 import '../models/task.dart';
+import '../models/task_repeat_type.dart';
+
+/// 通知タップ時に taskId を渡すコールバック
+typedef TaskNotificationTapCallback = void Function(int taskId);
 
 /// タスク通知のスケジュール管理
 abstract class TaskNotificationService {
+  TaskNotificationTapCallback? onNotificationTap;
+
   NotificationPreferences get preferences;
 
   void updatePreferences(NotificationPreferences preferences);
@@ -31,6 +37,9 @@ abstract class TaskNotificationService {
 
   Future<List<PendingNotificationRequest>> pendingNotifications();
 
+  /// 通知タップで起動した場合の taskId（なければ null）
+  Future<int?> readLaunchNotificationTaskId();
+
   Future<void> dispose();
 }
 
@@ -43,30 +52,139 @@ bool shouldScheduleTaskNotification(
   if (preferences.leadTime == NotificationLeadTime.none) return false;
   if (task.isCompleted) return false;
   if (task.reminderTime == null) return false;
-  if (task.dueDate == null) return false;
-  return true;
+
+  if (task.repeatType != TaskRepeatType.none) {
+    if (task.repeatType == TaskRepeatType.daily) return true;
+    return task.dueDate != null;
+  }
+
+  return task.dueDate != null;
+}
+
+/// タスクの予定日時（リマインド時刻）
+DateTime? taskEventDateTime(Task task, {DateTime? referenceNow}) {
+  final reminderTime = task.reminderTime;
+  if (reminderTime == null) return null;
+
+  final now = referenceNow ?? DateTime.now();
+
+  if (task.repeatType == TaskRepeatType.daily && task.dueDate == null) {
+    var candidate = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      reminderTime.hour,
+      reminderTime.minute,
+    );
+    if (!candidate.isAfter(now)) {
+      candidate = candidate.add(const Duration(days: 1));
+    }
+    return candidate;
+  }
+
+  final dueDate = task.dueDate;
+  if (dueDate == null) return null;
+
+  var event = DateTime(
+    dueDate.year,
+    dueDate.month,
+    dueDate.day,
+    reminderTime.hour,
+    reminderTime.minute,
+  );
+
+  if (task.repeatType != TaskRepeatType.none) {
+    while (!event.isAfter(now)) {
+      event = advanceTaskRecurrence(event, task.repeatType);
+    }
+  }
+
+  return event;
+}
+
+DateTime advanceTaskRecurrence(DateTime dateTime, TaskRepeatType repeatType) {
+  return switch (repeatType) {
+    TaskRepeatType.daily => dateTime.add(const Duration(days: 1)),
+    TaskRepeatType.weekly => dateTime.add(const Duration(days: 7)),
+    TaskRepeatType.monthly => DateTime(
+        dateTime.year,
+        dateTime.month + 1,
+        dateTime.day,
+        dateTime.hour,
+        dateTime.minute,
+      ),
+    TaskRepeatType.yearly => DateTime(
+        dateTime.year + 1,
+        dateTime.month,
+        dateTime.day,
+        dateTime.hour,
+        dateTime.minute,
+      ),
+    TaskRepeatType.none => dateTime,
+  };
 }
 
 /// 通知日時の計算（テスト用に公開）
 DateTime? notificationDateTimeForTask(
   Task task,
-  NotificationPreferences preferences,
-) {
+  NotificationPreferences preferences, {
+  DateTime? referenceNow,
+}) {
   if (!shouldScheduleTaskNotification(task, preferences)) return null;
 
   final leadDuration = preferences.leadTime.leadDuration;
   if (leadDuration == null) return null;
 
-  final due = task.dueDate!;
-  final time = task.reminderTime!;
-  final dueDateTime = DateTime(
-    due.year,
-    due.month,
-    due.day,
-    time.hour,
-    time.minute,
+  final event = taskEventDateTime(task, referenceNow: referenceNow);
+  if (event == null) return null;
+
+  return event.subtract(leadDuration);
+}
+
+/// 次に発火する通知日時（繰り返しタスクは未来の日時へ繰り上げ）
+DateTime? nextNotificationDateTimeForTask(
+  Task task,
+  NotificationPreferences preferences, {
+  DateTime? referenceNow,
+}) {
+  var scheduled = notificationDateTimeForTask(
+    task,
+    preferences,
+    referenceNow: referenceNow,
   );
-  return dueDateTime.subtract(leadDuration);
+  if (scheduled == null) return null;
+
+  final now = referenceNow ?? DateTime.now();
+  if (task.repeatType == TaskRepeatType.none) {
+    return scheduled.isAfter(now) ? scheduled : null;
+  }
+
+  var nextScheduled = scheduled;
+  while (!nextScheduled.isAfter(now)) {
+    nextScheduled = advanceTaskRecurrence(nextScheduled, task.repeatType);
+  }
+  return nextScheduled;
+}
+
+/// 通知本文（テスト用に公開）
+String notificationBodyForTask(Task task, NotificationLeadTime leadTime) {
+  if (leadTime == NotificationLeadTime.atTime) {
+    return '今日の予定です。';
+  }
+  if (leadTime == NotificationLeadTime.dayBefore) {
+    return '「${task.title}」まであと1日です。';
+  }
+  return '「${task.title}」まであと${leadTime.bodyLabel}です。';
+}
+
+DateTimeComponents? repeatComponentsForTask(Task task) {
+  return switch (task.repeatType) {
+    TaskRepeatType.daily => DateTimeComponents.time,
+    TaskRepeatType.weekly => DateTimeComponents.dayOfWeekAndTime,
+    TaskRepeatType.monthly => DateTimeComponents.dayOfMonthAndTime,
+    TaskRepeatType.yearly => DateTimeComponents.dateAndTime,
+    TaskRepeatType.none => null,
+  };
 }
 
 /// flutter_local_notifications による実装
@@ -85,6 +203,9 @@ class NativeTaskNotificationService implements TaskNotificationService {
       FlutterLocalNotificationsPlugin();
   bool _initialized = false;
   Future<void>? _initializationFuture;
+
+  @override
+  TaskNotificationTapCallback? onNotificationTap;
 
   @override
   NotificationPreferences get preferences => _preferences;
@@ -126,7 +247,10 @@ class NativeTaskNotificationService implements TaskNotificationService {
         iOS: iosSettings,
       );
 
-      await _plugin.initialize(settings: settings);
+      await _plugin.initialize(
+        settings: settings,
+        onDidReceiveNotificationResponse: _handleNotificationResponse,
+      );
 
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
         final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
@@ -150,6 +274,12 @@ class NativeTaskNotificationService implements TaskNotificationService {
       _log('initialize failed: $error');
       debugPrint(stack.toString());
     }
+  }
+
+  void _handleNotificationResponse(NotificationResponse response) {
+    final taskId = int.tryParse(response.payload ?? '');
+    if (taskId == null) return;
+    onNotificationTap?.call(taskId);
   }
 
   Future<void> _configureLocalTimeZone() async {
@@ -277,7 +407,8 @@ class NativeTaskNotificationService implements TaskNotificationService {
     _log(
       'scheduleTaskNotification called '
       'taskId=${task.id} title="${task.title}" '
-      'dueDate=${task.dueDate} reminderTime=${task.reminderTime}',
+      'dueDate=${task.dueDate} reminderTime=${task.reminderTime} '
+      'repeatType=${task.repeatType.name}',
     );
 
     try {
@@ -365,20 +496,32 @@ class NativeTaskNotificationService implements TaskNotificationService {
   }
 
   @override
+  Future<int?> readLaunchNotificationTaskId() async {
+    try {
+      await _ensureInitialized();
+    } catch (_) {
+      return null;
+    }
+    if (!_initialized) return null;
+
+    try {
+      final details = await _plugin.getNotificationAppLaunchDetails();
+      if (details?.didNotificationLaunchApp != true) return null;
+      return int.tryParse(details!.notificationResponse?.payload ?? '');
+    } catch (error, stack) {
+      _log('readLaunchNotificationTaskId failed: $error');
+      debugPrint(stack.toString());
+      return null;
+    }
+  }
+
+  @override
   Future<void> dispose() async {}
 
   Future<void> _scheduleTask(Task task) async {
-    final scheduledAt = notificationDateTimeForTask(task, _preferences);
+    final scheduledAt = nextNotificationDateTimeForTask(task, _preferences);
     if (scheduledAt == null) {
       _log('_scheduleTask skip (no schedule time) taskId=${task.id}');
-      await cancelTask(task.id);
-      return;
-    }
-
-    if (!scheduledAt.isAfter(DateTime.now())) {
-      _log(
-        '_scheduleTask skip (past) taskId=${task.id} scheduledAt=$scheduledAt',
-      );
       await cancelTask(task.id);
       return;
     }
@@ -394,16 +537,18 @@ class NativeTaskNotificationService implements TaskNotificationService {
       scheduledAt.minute,
     );
 
+    final repeatComponents = repeatComponentsForTask(task);
     _log(
       'zonedSchedule start taskId=${task.id} '
-      'local=$scheduledAt tz=$tzScheduled lead=${_preferences.leadTime.label}',
+      'local=$scheduledAt tz=$tzScheduled lead=${_preferences.leadTime.label} '
+      'repeat=${repeatComponents?.name ?? 'once'}',
     );
 
     try {
       await _plugin.zonedSchedule(
         id: task.id,
         title: 'FlowDo',
-        body: '「${task.title}」の時間です。まもなく開始予定です。',
+        body: notificationBodyForTask(task, _preferences.leadTime),
         scheduledDate: tzScheduled,
         notificationDetails: const NotificationDetails(
           android: AndroidNotificationDetails(
@@ -420,6 +565,8 @@ class NativeTaskNotificationService implements TaskNotificationService {
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        payload: '${task.id}',
+        matchDateTimeComponents: repeatComponents,
       );
 
       final pending = await pendingNotifications();
@@ -472,6 +619,9 @@ class NoOpTaskNotificationService implements TaskNotificationService {
   NotificationPreferences _preferences;
 
   @override
+  TaskNotificationTapCallback? onNotificationTap;
+
+  @override
   NotificationPreferences get preferences => _preferences;
 
   @override
@@ -503,6 +653,9 @@ class NoOpTaskNotificationService implements TaskNotificationService {
   }
 
   @override
+  Future<int?> readLaunchNotificationTaskId() async => null;
+
+  @override
   Future<void> dispose() async {}
 }
 
@@ -515,6 +668,9 @@ class RecordingTaskNotificationService implements TaskNotificationService {
   NotificationPreferences _preferences;
   final scheduledTaskIds = <int>[];
   final cancelledTaskIds = <int>[];
+
+  @override
+  TaskNotificationTapCallback? onNotificationTap;
 
   @override
   NotificationPreferences get preferences => _preferences;
@@ -550,6 +706,9 @@ class RecordingTaskNotificationService implements TaskNotificationService {
   Future<List<PendingNotificationRequest>> pendingNotifications() async {
     return const [];
   }
+
+  @override
+  Future<int?> readLaunchNotificationTaskId() async => null;
 
   @override
   Future<void> dispose() async {}

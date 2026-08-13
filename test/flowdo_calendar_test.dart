@@ -113,7 +113,7 @@ void main() {
   });
 
   group('calendarTasksForDay', () {
-    test('8/13 には固定・今日・予定の各タスクをすべて返す', () {
+    test('8/13 には重要・今日・予定の各タスクをすべて返す', () {
       final today = DateTime(2026, 8, 13);
       final entries = calendarTasksForDay(
         tasks: [

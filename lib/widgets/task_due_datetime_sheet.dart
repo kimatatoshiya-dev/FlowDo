@@ -4,44 +4,51 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../models/notification_preferences.dart';
+import '../models/task_repeat_type.dart';
 import '../theme/app_theme.dart';
 import '../utils/date_formatter.dart';
 
-/// タスクの期限日・時間を1フローで設定する BottomSheet
+/// タスクの期限日・時間・繰り返し・通知を1画面で設定する BottomSheet
 class TaskDueDateTimeSheet extends StatefulWidget {
   const TaskDueDateTimeSheet({
     super.key,
     required this.initialDueDate,
     required this.initialReminderTime,
+    required this.initialRepeatType,
     required this.notificationPreferences,
     required this.notificationsFeatureEnabled,
     required this.checkNotificationPermission,
     required this.onRequestNotificationPermission,
     required this.onDueDateChanged,
     required this.onReminderTimeChanged,
+    required this.onRepeatTypeChanged,
     this.promptForTimeOnOpen = false,
   });
 
   final DateTime? initialDueDate;
   final TimeOfDay? initialReminderTime;
+  final TaskRepeatType initialRepeatType;
   final NotificationPreferences notificationPreferences;
   final bool notificationsFeatureEnabled;
   final Future<bool> Function() checkNotificationPermission;
   final Future<bool> Function() onRequestNotificationPermission;
   final Future<void> Function(DateTime? dueDate) onDueDateChanged;
   final Future<void> Function(TimeOfDay? reminderTime) onReminderTimeChanged;
+  final Future<void> Function(TaskRepeatType repeatType) onRepeatTypeChanged;
   final bool promptForTimeOnOpen;
 
   static Future<void> show(
     BuildContext context, {
     required DateTime? initialDueDate,
     required TimeOfDay? initialReminderTime,
+    required TaskRepeatType initialRepeatType,
     required NotificationPreferences notificationPreferences,
     required bool notificationsFeatureEnabled,
     required Future<bool> Function() checkNotificationPermission,
     required Future<bool> Function() onRequestNotificationPermission,
     required Future<void> Function(DateTime? dueDate) onDueDateChanged,
     required Future<void> Function(TimeOfDay? reminderTime) onReminderTimeChanged,
+    required Future<void> Function(TaskRepeatType repeatType) onRepeatTypeChanged,
     bool promptForTimeOnOpen = false,
   }) {
     return showModalBottomSheet<void>(
@@ -51,12 +58,14 @@ class TaskDueDateTimeSheet extends StatefulWidget {
       builder: (context) => TaskDueDateTimeSheet(
         initialDueDate: initialDueDate,
         initialReminderTime: initialReminderTime,
+        initialRepeatType: initialRepeatType,
         notificationPreferences: notificationPreferences,
         notificationsFeatureEnabled: notificationsFeatureEnabled,
         checkNotificationPermission: checkNotificationPermission,
         onRequestNotificationPermission: onRequestNotificationPermission,
         onDueDateChanged: onDueDateChanged,
         onReminderTimeChanged: onReminderTimeChanged,
+        onRepeatTypeChanged: onRepeatTypeChanged,
         promptForTimeOnOpen: promptForTimeOnOpen,
       ),
     );
@@ -69,6 +78,7 @@ class TaskDueDateTimeSheet extends StatefulWidget {
 class _TaskDueDateTimeSheetState extends State<TaskDueDateTimeSheet> {
   late DateTime? _dueDate;
   late TimeOfDay? _reminderTime;
+  late TaskRepeatType _repeatType;
   var _isSaving = false;
   var _permissionGranted = false;
   var _permissionChecked = false;
@@ -79,14 +89,21 @@ class _TaskDueDateTimeSheetState extends State<TaskDueDateTimeSheet> {
       widget.notificationPreferences.enabled &&
       widget.notificationPreferences.leadTime != NotificationLeadTime.none;
 
+  bool get _showsFullScheduleSettings =>
+      _dueDate != null || _repeatType != TaskRepeatType.none;
+
+  bool get _canPickTime =>
+      _dueDate != null || _repeatType == TaskRepeatType.daily;
+
   @override
   void initState() {
     super.initState();
     _dueDate = widget.initialDueDate;
     _reminderTime = widget.initialReminderTime;
+    _repeatType = widget.initialRepeatType;
     unawaited(_refreshPermissionStatus());
 
-    if (widget.promptForTimeOnOpen && _dueDate != null && _reminderTime == null) {
+    if (widget.promptForTimeOnOpen && _canPickTime && _reminderTime == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(_promptForTime());
       });
@@ -140,7 +157,7 @@ class _TaskDueDateTimeSheetState extends State<TaskDueDateTimeSheet> {
   }
 
   Future<void> _pickTime({bool clearIfCancelled = false}) async {
-    if (_isSaving || _dueDate == null) return;
+    if (_isSaving || !_canPickTime) return;
 
     final picked = await showTimePicker(
       context: context,
@@ -163,7 +180,7 @@ class _TaskDueDateTimeSheetState extends State<TaskDueDateTimeSheet> {
   }
 
   Future<void> _promptForTime() async {
-    if (!mounted || _dueDate == null) return;
+    if (!mounted || !_canPickTime) return;
 
     final shouldSetTime = await showModalBottomSheet<bool>(
       context: context,
@@ -189,6 +206,41 @@ class _TaskDueDateTimeSheetState extends State<TaskDueDateTimeSheet> {
     await _runSave(() => widget.onReminderTimeChanged(null));
   }
 
+  Future<void> _pickRepeatType() async {
+    if (_isSaving) return;
+
+    final selected = await showModalBottomSheet<TaskRepeatType>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => _RepeatTypePickerSheet(initialValue: _repeatType),
+    );
+    if (!mounted || selected == null || selected == _repeatType) return;
+
+    if (selected != TaskRepeatType.daily &&
+        selected != TaskRepeatType.none &&
+        _dueDate == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('毎週・毎月・毎年の繰り返しには期限日が必要です'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      return;
+    }
+
+    setState(() => _repeatType = selected);
+    await _runSave(() => widget.onRepeatTypeChanged(selected));
+    if (!mounted) return;
+    await _scheduleTaskNotificationIfNeeded();
+  }
+
+  Future<void> _scheduleTaskNotificationIfNeeded() async {
+    await _refreshPermissionStatus();
+  }
+
   Future<void> _runSave(Future<void> Function() action) async {
     setState(() => _isSaving = true);
     try {
@@ -204,7 +256,6 @@ class _TaskDueDateTimeSheetState extends State<TaskDueDateTimeSheet> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<FlowDoColors>()!;
     final colorScheme = Theme.of(context).colorScheme;
-    final hasDueDate = _dueDate != null;
 
     return SafeArea(
       child: Padding(
@@ -221,15 +272,15 @@ class _TaskDueDateTimeSheetState extends State<TaskDueDateTimeSheet> {
             ),
             const SizedBox(height: 4),
             Text(
-              hasDueDate
-                  ? '日付を選ぶと、続けて時間も設定できます'
+              _showsFullScheduleSettings
+                  ? '日付・時間・繰り返し・通知をまとめて設定できます'
                   : 'まず期限日を選んでください',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: colors.secondaryLabel,
                   ),
             ),
             const SizedBox(height: 12),
-            if (!hasDueDate)
+            if (!_showsFullScheduleSettings)
               _SettingRow(
                 key: const ValueKey('due_date_empty_row'),
                 emoji: '📅',
@@ -238,11 +289,21 @@ class _TaskDueDateTimeSheetState extends State<TaskDueDateTimeSheet> {
                 enabled: !_isSaving,
               )
             else ...[
-              _DueDateTimeSummary(
-                dueDate: _dueDate!,
+              _TaskScheduleSettingsCard(
+                dueDate: _dueDate,
                 reminderTime: _reminderTime,
+                repeatType: _repeatType,
+                canPickTime: _canPickTime,
+                notificationsFeatureEnabled: widget.notificationsFeatureEnabled,
+                notificationsEnabled: _notificationsEnabled,
+                permissionChecked: _permissionChecked,
+                permissionGranted: _permissionGranted,
+                permissionRequesting: _permissionRequesting,
+                leadTimeLabel: widget.notificationPreferences.leadTime.label,
                 onEditDate: _pickDate,
                 onEditTime: () => _pickTime(),
+                onEditRepeat: _pickRepeatType,
+                onRequestPermission: _requestPermission,
                 enabled: !_isSaving,
               ),
               if (_reminderTime != null) ...[
@@ -255,20 +316,6 @@ class _TaskDueDateTimeSheetState extends State<TaskDueDateTimeSheet> {
                   ),
                 ),
               ],
-            ],
-            if (_reminderTime != null) ...[
-              const SizedBox(height: 12),
-              Divider(height: 1, color: colors.separator),
-              const SizedBox(height: 4),
-              _TaskNotificationStatusRow(
-                notificationsFeatureEnabled: widget.notificationsFeatureEnabled,
-                notificationsEnabled: _notificationsEnabled,
-                permissionChecked: _permissionChecked,
-                permissionGranted: _permissionGranted,
-                permissionRequesting: _permissionRequesting,
-                leadTimeLabel: widget.notificationPreferences.leadTime.label,
-                onRequestPermission: _requestPermission,
-              ),
             ],
             if (_isSaving) ...[
               const SizedBox(height: 16),
@@ -301,19 +348,39 @@ class _TaskDueDateTimeSheetState extends State<TaskDueDateTimeSheet> {
   }
 }
 
-class _DueDateTimeSummary extends StatelessWidget {
-  const _DueDateTimeSummary({
+class _TaskScheduleSettingsCard extends StatelessWidget {
+  const _TaskScheduleSettingsCard({
     required this.dueDate,
     required this.reminderTime,
+    required this.repeatType,
+    required this.canPickTime,
+    required this.notificationsFeatureEnabled,
+    required this.notificationsEnabled,
+    required this.permissionChecked,
+    required this.permissionGranted,
+    required this.permissionRequesting,
+    required this.leadTimeLabel,
     required this.onEditDate,
     required this.onEditTime,
+    required this.onEditRepeat,
+    required this.onRequestPermission,
     required this.enabled,
   });
 
-  final DateTime dueDate;
+  final DateTime? dueDate;
   final TimeOfDay? reminderTime;
+  final TaskRepeatType repeatType;
+  final bool canPickTime;
+  final bool notificationsFeatureEnabled;
+  final bool notificationsEnabled;
+  final bool permissionChecked;
+  final bool permissionGranted;
+  final bool permissionRequesting;
+  final String leadTimeLabel;
   final Future<void> Function() onEditDate;
   final Future<void> Function() onEditTime;
+  final Future<void> Function() onEditRepeat;
+  final VoidCallback onRequestPermission;
   final bool enabled;
 
   @override
@@ -332,7 +399,9 @@ class _DueDateTimeSummary extends StatelessWidget {
           _SettingRow(
             key: const ValueKey('due_date_set_row'),
             emoji: '📅',
-            label: DateFormatter.format(dueDate),
+            label: dueDate == null
+                ? DateFormatter.noDueDateLabel
+                : DateFormatter.format(dueDate!),
             onTap: enabled ? onEditDate : null,
             enabled: enabled,
           ),
@@ -343,8 +412,27 @@ class _DueDateTimeSummary extends StatelessWidget {
             label: reminderTime == null
                 ? DateFormatter.noReminderTimeLabel
                 : DateFormatter.formatReminderTimeSheet(reminderTime!),
-            onTap: enabled ? onEditTime : null,
+            onTap: enabled && canPickTime ? onEditTime : null,
+            enabled: enabled && canPickTime,
+          ),
+          Divider(height: 1, indent: 16, endIndent: 16, color: colors.separator),
+          _SettingRow(
+            key: const ValueKey('due_repeat_row'),
+            emoji: '🔁',
+            label: repeatType.label,
+            onTap: enabled ? onEditRepeat : null,
             enabled: enabled,
+          ),
+          Divider(height: 1, indent: 16, endIndent: 16, color: colors.separator),
+          _TaskNotificationStatusRow(
+            notificationsFeatureEnabled: notificationsFeatureEnabled,
+            notificationsEnabled: notificationsEnabled,
+            hasReminderTime: reminderTime != null,
+            permissionChecked: permissionChecked,
+            permissionGranted: permissionGranted,
+            permissionRequesting: permissionRequesting,
+            leadTimeLabel: leadTimeLabel,
+            onRequestPermission: onRequestPermission,
           ),
         ],
       ),
@@ -356,6 +444,7 @@ class _TaskNotificationStatusRow extends StatelessWidget {
   const _TaskNotificationStatusRow({
     required this.notificationsFeatureEnabled,
     required this.notificationsEnabled,
+    required this.hasReminderTime,
     required this.permissionChecked,
     required this.permissionGranted,
     required this.permissionRequesting,
@@ -365,6 +454,7 @@ class _TaskNotificationStatusRow extends StatelessWidget {
 
   final bool notificationsFeatureEnabled;
   final bool notificationsEnabled;
+  final bool hasReminderTime;
   final bool permissionChecked;
   final bool permissionGranted;
   final bool permissionRequesting;
@@ -376,9 +466,28 @@ class _TaskNotificationStatusRow extends StatelessWidget {
     final colors = Theme.of(context).extension<FlowDoColors>()!;
     final colorScheme = Theme.of(context).colorScheme;
 
+    if (!hasReminderTime) {
+      return ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        leading: const Text('🔔', style: TextStyle(fontSize: 20, height: 1)),
+        title: const Text('通知'),
+        subtitle: Text(
+          '時間を設定すると通知されます',
+          style: TextStyle(color: colors.secondaryLabel),
+        ),
+        trailing: Text(
+          'OFF',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: colors.secondaryLabel,
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+      );
+    }
+
     if (!notificationsEnabled) {
       return ListTile(
-        contentPadding: EdgeInsets.zero,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
         leading: const Text('🔔', style: TextStyle(fontSize: 20, height: 1)),
         title: const Text('通知'),
         subtitle: Text(
@@ -399,7 +508,7 @@ class _TaskNotificationStatusRow extends StatelessWidget {
 
     if (!permissionChecked) {
       return ListTile(
-        contentPadding: EdgeInsets.zero,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
         leading: const Text('🔔', style: TextStyle(fontSize: 20, height: 1)),
         title: const Text('通知'),
         subtitle: Text(
@@ -416,7 +525,7 @@ class _TaskNotificationStatusRow extends StatelessWidget {
 
     if (!permissionGranted) {
       return ListTile(
-        contentPadding: EdgeInsets.zero,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
         leading: const Text('🔔', style: TextStyle(fontSize: 20, height: 1)),
         title: const Text('通知'),
         subtitle: Text(
@@ -437,7 +546,7 @@ class _TaskNotificationStatusRow extends StatelessWidget {
     }
 
     return ListTile(
-      contentPadding: EdgeInsets.zero,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
       leading: const Text('🔔', style: TextStyle(fontSize: 20, height: 1)),
       title: const Text('通知'),
       subtitle: Text(
@@ -450,6 +559,48 @@ class _TaskNotificationStatusRow extends StatelessWidget {
               color: colorScheme.primary,
               fontWeight: FontWeight.w700,
             ),
+      ),
+    );
+  }
+}
+
+class _RepeatTypePickerSheet extends StatelessWidget {
+  const _RepeatTypePickerSheet({required this.initialValue});
+
+  final TaskRepeatType initialValue;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowDoColors>()!;
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '🔁 繰り返し',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            for (final (index, type) in TaskRepeatType.values.indexed) ...[
+              if (index > 0)
+                Divider(height: 1, color: colors.separator),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(type.label),
+                trailing: type == initialValue
+                    ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                    : null,
+                onTap: () => Navigator.pop(context, type),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -522,7 +673,7 @@ class _SettingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      contentPadding: EdgeInsets.zero,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
       enabled: enabled,
       leading: Text(emoji, style: const TextStyle(fontSize: 20, height: 1)),
       title: Text(

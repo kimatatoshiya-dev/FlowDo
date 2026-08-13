@@ -108,16 +108,16 @@ class DateFormatter {
     final DueDateUrgency urgency;
 
     if (days < 0) {
-      headline = '🚨 期限切れ';
+      headline = '🗓️ 期限切れ';
       urgency = DueDateUrgency.overdue;
     } else if (days == 0) {
-      headline = '🔥 今日';
+      headline = '🗓️ 今日';
       urgency = DueDateUrgency.today;
     } else if (days == 1) {
-      headline = '🌤 明日';
+      headline = '🗓️ 明日';
       urgency = DueDateUrgency.tomorrow;
     } else {
-      headline = '⏳ あと$days日';
+      headline = '🗓️ あと$days日';
       urgency = days <= 3 ? DueDateUrgency.soon : DueDateUrgency.upcoming;
     }
 

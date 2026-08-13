@@ -808,7 +808,7 @@ class AppStorage {
     }
   }
 
-  /// 固定（📌）ガイドを表示すべきか
+  /// 重要（📌）ガイドを表示すべきか
   static Future<bool> shouldShowFavoriteGuidance() async {
     try {
       final prefs = await _ensurePrefs();

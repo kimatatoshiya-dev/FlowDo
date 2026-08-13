@@ -38,28 +38,28 @@ void main() {
           dueDate: DateTime(2026, 8, 13),
           reference: reference,
         ).headline,
-        '🔥 今日',
+        '🗓️ 今日',
       );
       expect(
         DateFormatter.buildTaskDueChipDisplay(
           dueDate: DateTime(2026, 8, 14),
           reference: reference,
         ).headline,
-        '🌤 明日',
+        '🗓️ 明日',
       );
       expect(
         DateFormatter.buildTaskDueChipDisplay(
           dueDate: DateTime(2026, 8, 16),
           reference: reference,
         ).headline,
-        '⏳ あと3日',
+        '🗓️ あと3日',
       );
       expect(
         DateFormatter.buildTaskDueChipDisplay(
           dueDate: DateTime(2026, 8, 10),
           reference: reference,
         ).headline,
-        '🚨 期限切れ',
+        '🗓️ 期限切れ',
       );
     });
 
@@ -90,7 +90,7 @@ void main() {
         reference: reference,
       );
 
-      expect(display.inlineLabel, '🔥 今日　8/13(木)　🕒12:00');
+      expect(display.inlineLabel, '🗓️ 今日　8/13(木)　🕒12:00');
 
       final upcoming = DateFormatter.buildTaskDueChipDisplay(
         dueDate: DateTime(2026, 8, 17),
@@ -98,7 +98,7 @@ void main() {
         reference: reference,
       );
 
-      expect(upcoming.inlineLabel, '⏳ あと4日　8/17(月)　🕒09:05');
+      expect(upcoming.inlineLabel, '🗓️ あと4日　8/17(月)　🕒09:05');
     });
 
     test('緊急度に応じた色分けを返す', () {

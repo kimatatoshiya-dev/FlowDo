@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import '../models/category_item.dart';
 import '../models/task.dart';
 import '../models/task_priority.dart';
-import '../models/task_sort_mode.dart';
+import '../models/task_repeat_type.dart';
 import '../theme/app_theme.dart';
 import '../utils/date_formatter.dart';
 import 'inbox_promote_pending.dart';
+import 'inbox_category_dropdown_trigger.dart';
 import 'registration_feedback.dart';
 import 'task_swipe_actions.dart';
 
@@ -70,9 +71,6 @@ class TaskTile extends StatelessWidget {
 
   bool get _useCompletedVisual => isCompletedList || task.isCompleted;
 
-  bool get _isPinnedTask => task.isFavorite && !_useCompletedVisual;
-
-  static const _pinAccent = Color(0xFFFF9500);
   static const _flowDoBlue = Color(0xFF007AFF);
   static const _inboxUnorganizedFill = Color(0xFFF5F9FF);
   static const _inboxStyleDuration = Duration(milliseconds: 200);
@@ -80,11 +78,10 @@ class TaskTile extends StatelessWidget {
   bool get _showInboxUnorganizedStyle =>
       isInboxList && !isCompletedList && task.isInboxUnorganized;
 
+  CategoryItem get _displayCategory => category;
+
   Color _materialColor(FlowDoColors colors) {
     if (_useCompletedVisual) return colors.completedTaskSurface;
-    if (_isPinnedTask && !_showInboxUnorganizedStyle) {
-      return _pinAccent.withValues(alpha: 0.08);
-    }
     if (_showInboxUnorganizedStyle) return _inboxUnorganizedFill;
     if (isInboxList) return colors.groupedSurface;
     return Colors.transparent;
@@ -100,7 +97,6 @@ class TaskTile extends StatelessWidget {
     if (_useCompletedVisual) {
       return category.color.withValues(alpha: 0.45);
     }
-    if (_isPinnedTask && !isInboxList) return _pinAccent;
     if (_showInboxUnorganizedStyle) return _flowDoBlue;
     if (isInboxList) return Colors.transparent;
     return category.color;
@@ -192,7 +188,9 @@ class TaskTile extends StatelessWidget {
                         child: Padding(
                           padding: _contentPadding,
                           child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment: isInboxList && !isCompletedList
+                                ? CrossAxisAlignment.center
+                                : CrossAxisAlignment.start,
                             children: [
                               if (showCompletionToggle)
                                 Padding(
@@ -263,41 +261,15 @@ class TaskTile extends StatelessWidget {
                                         colorScheme,
                                       ),
                               ),
-                              IconButton(
-                                tooltip: task.isFavorite
-                                    ? '固定を解除'
-                                    : '最上位へ固定',
-                                icon: Text(
-                                  '📌',
-                                  style: TextStyle(
-                                    fontSize: _useCompletedVisual ? 18 : 20,
-                                    height: 1,
-                                    color: task.isFavorite
-                                        ? _pinAccent.withValues(
-                                            alpha:
-                                                _useCompletedVisual ? 0.65 : 1,
-                                          )
-                                        : _useCompletedVisual
-                                            ? colors.secondaryLabel
-                                            : colors.secondaryLabel
-                                                .withValues(alpha: 0.55),
+                              if (isInboxList && !isCompletedList)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 4),
+                                  child: InboxCategoryDropdownTrigger(
+                                    key: TaskTile.categoryColorDotKey,
+                                    tooltip: 'カテゴリーを変更',
+                                    onTap: onCategoryTap,
                                   ),
                                 ),
-                                onPressed: onFavoriteTap,
-                                visualDensity: VisualDensity.compact,
-                                padding: _useCompletedVisual
-                                    ? const EdgeInsets.all(4)
-                                    : const EdgeInsets.all(6),
-                                constraints: _useCompletedVisual
-                                    ? const BoxConstraints(
-                                        minWidth: 32,
-                                        minHeight: 32,
-                                      )
-                                    : const BoxConstraints(
-                                        minWidth: 36,
-                                        minHeight: 36,
-                                      ),
-                              ),
                             ],
                           ),
                         ),
@@ -376,15 +348,97 @@ class TaskTile extends StatelessWidget {
       child: Text(task.title),
     );
 
+    final metaChips = showMetaChips
+        ? Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _MetaTapChip(
+                label: task.isFavorite ? '📌 重要' : '📌',
+                color: task.isFavorite
+                    ? _flowDoBlue
+                    : colors.secondaryLabel.withValues(
+                        alpha: useMutedCompleted ? 0.65 : 0.75,
+                      ),
+                backgroundColor: task.isFavorite
+                    ? _flowDoBlue.withValues(alpha: 0.12)
+                    : colors.secondaryLabel.withValues(alpha: 0.06),
+                onTap: onFavoriteTap,
+                compact: useMutedCompleted,
+              ),
+              SizedBox(width: useMutedCompleted ? 4 : 5),
+              if (taskHasRepeatSchedule(task) && !useMutedCompleted) ...[
+                _MetaTapChip(
+                  label: '🔁 ${task.repeatType.label}',
+                  color: colors.secondaryLabel,
+                  backgroundColor: colors.secondaryLabel.withValues(alpha: 0.08),
+                  onTap: onDueDateTap,
+                  compact: useMutedCompleted,
+                ),
+                SizedBox(width: useMutedCompleted ? 4 : 5),
+              ],
+              _MetaTapChip(
+                label: TaskPriorityStars.label(task.priorityStars),
+                color: _priorityChipColor(task.priorityStars, useMutedCompleted),
+                backgroundColor:
+                    _priorityChipBackground(task.priorityStars, useMutedCompleted),
+                onTap: onPriorityTap,
+                compact: useMutedCompleted,
+              ),
+              SizedBox(width: useMutedCompleted ? 4 : 5),
+              Expanded(
+                child: task.dueDate == null
+                    ? _MetaTapChip(
+                        label: DateFormatter.noDueDateLabel,
+                        color: colors.secondaryLabel.withValues(
+                          alpha: useMutedCompleted ? 0.65 : 1,
+                        ),
+                        backgroundColor: colors.secondaryLabel.withValues(
+                          alpha: useMutedCompleted ? 0.04 : 0.06,
+                        ),
+                        icon: Icons.event_outlined,
+                        onTap: onDueDateTap,
+                        compact: useMutedCompleted,
+                        expand: true,
+                        denseHorizontal: true,
+                      )
+                    : _DueDateTapChip(
+                        task: task,
+                        useMutedCompleted: useMutedCompleted,
+                        onTap: onDueDateTap,
+                        compact: useMutedCompleted,
+                      ),
+              ),
+            ],
+          )
+        : null;
+
+    if (isInboxList && !useMutedCompleted) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _InboxTaskCategoryRow(
+            title: task.title,
+            categoryColor: _displayCategory.color,
+            onTap: onCategoryTap,
+            emphasizeTitle: _showInboxUnorganizedStyle,
+          ),
+          if (metaChips != null) ...[
+            const SizedBox(height: 4),
+            metaChips,
+          ],
+        ],
+      );
+    }
+
     final titleRow = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _CategoryColorDot(
           color: useMutedCompleted
-              ? category.color.withValues(alpha: 0.55)
-              : category.color,
+              ? _displayCategory.color.withValues(alpha: 0.55)
+              : _displayCategory.color,
           onTap: onCategoryTap,
-          tooltip: categoryChipTooltip ?? category.name,
+          tooltip: categoryChipTooltip ?? _displayCategory.name,
           compact: useMutedCompleted,
         ),
         SizedBox(width: useMutedCompleted ? 7 : 8),
@@ -444,45 +498,9 @@ class TaskTile extends StatelessWidget {
                 ),
           ),
         ],
-        if (showMetaChips) ...[
+        if (metaChips != null) ...[
           SizedBox(height: useMutedCompleted ? 3 : 4),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              _MetaTapChip(
-                label: TaskPriorityStars.label(task.priorityStars),
-                color: _priorityChipColor(task.priorityStars, useMutedCompleted),
-                backgroundColor:
-                    _priorityChipBackground(task.priorityStars, useMutedCompleted),
-                onTap: onPriorityTap,
-                compact: useMutedCompleted,
-              ),
-              SizedBox(width: useMutedCompleted ? 4 : 5),
-              Expanded(
-                child: task.dueDate == null
-                    ? _MetaTapChip(
-                        label: DateFormatter.noDueDateLabel,
-                        color: colors.secondaryLabel.withValues(
-                          alpha: useMutedCompleted ? 0.65 : 1,
-                        ),
-                        backgroundColor: colors.secondaryLabel.withValues(
-                          alpha: useMutedCompleted ? 0.04 : 0.06,
-                        ),
-                        icon: Icons.event_outlined,
-                        onTap: onDueDateTap,
-                        compact: useMutedCompleted,
-                        expand: true,
-                        denseHorizontal: true,
-                      )
-                    : _DueDateTapChip(
-                        task: task,
-                        useMutedCompleted: useMutedCompleted,
-                        onTap: onDueDateTap,
-                        compact: useMutedCompleted,
-                      ),
-              ),
-            ],
-          ),
+          metaChips,
         ],
       ],
     );
@@ -499,6 +517,79 @@ class TaskTile extends StatelessWidget {
       return colors.foreground.withValues(alpha: 0.04);
     }
     return colors.background;
+  }
+}
+
+/// Inbox タスク — カテゴリー選択行（丸 + タイトル + ▼、行全体タップ）
+class _InboxTaskCategoryRow extends StatelessWidget {
+  const _InboxTaskCategoryRow({
+    required this.title,
+    required this.categoryColor,
+    required this.onTap,
+    this.emphasizeTitle = false,
+  });
+
+  static const _minHeight = 50.0;
+  static const _colorFadeDuration = Duration(milliseconds: 180);
+
+  final String title;
+  final Color categoryColor;
+  final VoidCallback onTap;
+  final bool emphasizeTitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        splashColor: colorScheme.primary.withValues(alpha: 0.08),
+        highlightColor: colorScheme.primary.withValues(alpha: 0.04),
+        child: SizedBox(
+          height: _minHeight,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Row(
+              children: [
+                AnimatedSwitcher(
+                  duration: _colorFadeDuration,
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeOut,
+                  transitionBuilder: (child, animation) =>
+                      FadeTransition(opacity: animation, child: child),
+                  child: Container(
+                    key: ValueKey<int>(categoryColor.toARGB32()),
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: categoryColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          fontWeight:
+                              emphasizeTitle ? FontWeight.w600 : FontWeight.w500,
+                          height: 1.2,
+                          color: colorScheme.onSurface.withValues(alpha: 0.92),
+                        ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -771,9 +862,6 @@ class GroupedTaskList extends StatelessWidget {
     this.isInboxList = false,
     this.showInboxGuidance = false,
     this.onPromoteTask,
-    this.enablePinnedReorder = false,
-    this.onPinnedReorder,
-    this.pinLayoutDeferredTaskIds = const {},
     this.showSectionTitle = true,
   });
 
@@ -801,9 +889,6 @@ class GroupedTaskList extends StatelessWidget {
   final bool isInboxList;
   final bool showInboxGuidance;
   final Future<void> Function(Task task)? onPromoteTask;
-  final bool enablePinnedReorder;
-  final void Function(List<Task> reorderedPinned)? onPinnedReorder;
-  final Set<int> pinLayoutDeferredTaskIds;
   final bool showSectionTitle;
 
   TaskTile _taskTileFor(Task task, {required bool showDivider}) {
@@ -837,58 +922,7 @@ class GroupedTaskList extends StatelessWidget {
     );
   }
 
-  Widget _buildPinnedReorderRow(
-    BuildContext context,
-    FlowDoColors colors,
-    Task task,
-    int index,
-    int pinnedCount,
-    bool hasUnpinned,
-  ) {
-    return Material(
-      key: ValueKey('pinned-reorder-${task.id}'),
-      color: Colors.transparent,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ReorderableDragStartListener(
-            index: index,
-            child: Tooltip(
-              message: '長押しして並び替え',
-              child: Padding(
-                padding: const EdgeInsets.only(left: 2, top: 10),
-                child: Icon(
-                  Icons.swap_vert,
-                  size: 22,
-                  color: colors.secondaryLabel.withValues(alpha: 0.85),
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: AnimatedSize(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOut,
-              alignment: Alignment.topCenter,
-              child: _taskTileFor(
-                task,
-                showDivider: index < pinnedCount - 1 || hasUnpinned,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildPendingGroupedList(BuildContext context, FlowDoColors colors) {
-    final (pinned, unpinned) = splitPinnedTasksForDisplay(
-      tasks,
-      pinLayoutDeferredTaskIds: pinLayoutDeferredTaskIds,
-    );
-    final canReorderPinned =
-        enablePinnedReorder && pinned.length >= 2 && onPinnedReorder != null;
-
     return Container(
       decoration: BoxDecoration(
         color: colors.groupedSurface,
@@ -897,46 +931,14 @@ class GroupedTaskList extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          if (canReorderPinned)
-            ReorderableListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              buildDefaultDragHandles: false,
-              itemCount: pinned.length,
-              onReorder: (oldIndex, newIndex) {
-                final next = List<Task>.from(pinned);
-                if (newIndex > oldIndex) newIndex -= 1;
-                next.insert(newIndex, next.removeAt(oldIndex));
-                onPinnedReorder!(next);
-              },
-              itemBuilder: (context, index) => _buildPinnedReorderRow(
-                context,
-                colors,
-                pinned[index],
-                index,
-                pinned.length,
-                unpinned.isNotEmpty,
-              ),
-            )
-          else
-            for (var i = 0; i < pinned.length; i++)
-              AnimatedSize(
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeOut,
-                alignment: Alignment.topCenter,
-                child: _taskTileFor(
-                  pinned[i],
-                  showDivider: i < pinned.length - 1 || unpinned.isNotEmpty,
-                ),
-              ),
-          for (var i = 0; i < unpinned.length; i++)
+          for (var i = 0; i < tasks.length; i++)
             AnimatedSize(
               duration: const Duration(milliseconds: 250),
               curve: Curves.easeOut,
               alignment: Alignment.topCenter,
               child: _taskTileFor(
-                unpinned[i],
-                showDivider: i < unpinned.length - 1,
+                tasks[i],
+                showDivider: i < tasks.length - 1,
               ),
             ),
         ],

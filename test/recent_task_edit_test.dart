@@ -20,9 +20,7 @@ void main() {
     await tester.pump();
     await settleAfterTaskRegistration(tester);
 
-    await tester.ensureVisible(find.text('編集対象', skipOffstage: false));
-    await tester.tap(find.text('編集対象', skipOffstage: false));
-    await settleFlowDoUi(tester);
+    await openTaskEditBySwipe(tester, '編集対象');
 
     expect(find.text('タスクを編集'), findsOneWidget);
     expect(find.text('キャンセル'), findsOneWidget);
@@ -43,9 +41,7 @@ void main() {
     await tester.pump();
     await settleAfterTaskRegistration(tester);
 
-    await tester.ensureVisible(find.text('旧タイトル', skipOffstage: false));
-    await tester.tap(find.text('旧タイトル', skipOffstage: false));
-    await settleFlowDoUi(tester);
+    await openTaskEditBySwipe(tester, '旧タイトル');
 
     expect(find.text('タスクを編集'), findsOneWidget);
 

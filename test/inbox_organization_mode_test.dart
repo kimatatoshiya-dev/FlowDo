@@ -82,7 +82,7 @@ void main() {
       ),
     );
 
-    expect(find.text('未整理'), findsOneWidget);
+    expect(find.text('思考整理テスト'), findsOneWidget);
 
     task.categoryId = CategoryItem.defaultRegistrationCategoryId;
     await tester.pumpWidget(
@@ -111,6 +111,6 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 220));
 
-    expect(find.text('未整理'), findsNothing);
+    expect(find.text('思考整理テスト'), findsOneWidget);
   });
 }

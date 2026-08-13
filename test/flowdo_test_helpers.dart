@@ -9,7 +9,6 @@ import 'package:flowdo/services/analytics/noop_analytics_service.dart';
 import 'package:flowdo/services/auth/noop_auth_service.dart';
 import 'package:flowdo/services/task_notification_service.dart';
 import 'package:flowdo/services/tasks/local_task_repository.dart';
-import 'package:flowdo/widgets/category_bar.dart';
 import 'package:flowdo/widgets/task_swipe_actions.dart';
 
 Finder taskTileForTitle(String title) {
@@ -61,8 +60,24 @@ Future<void> pumpFlowDoApp(
 
 /// Inbox のタスクを未完了リストへ移動する（整理するボタン）
 Future<void> organizeInboxTasks(WidgetTester tester, {required int count}) async {
-  await tester.tap(find.text('$count件を整理する'));
+  final button = find.byKey(const ValueKey('organize_tasks_button'));
+  expect(button, findsOneWidget);
+  await tester.ensureVisible(button);
+  await settleFlowDoUi(tester);
+  await tester.tap(button);
   await tester.pump();
+  await settleFlowDoUi(tester);
+}
+
+/// Inbox タスクを左スワイプして編集シートを開く
+Future<void> openTaskEditBySwipe(WidgetTester tester, String title) async {
+  final tile = taskTileForTitle(title);
+  await tester.ensureVisible(tile);
+  await settleFlowDoUi(tester);
+  final width = tester.getSize(tile).width;
+  await tester.drag(tile, Offset(-width * 0.35, 0));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
   await settleFlowDoUi(tester);
 }
 
@@ -71,17 +86,32 @@ Future<void> settleFlowDoUi(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 300));
 }
 
-/// Inbox セクション内の CategoryBar を表示させる
-Future<void> revealCategoryBar(WidgetTester tester) async {
-  final bar = find.byKey(const ValueKey('inbox_category_bar'));
-  if (bar.evaluate().isEmpty) return;
-  await tester.ensureVisible(bar);
+/// Inbox 整理先セレクターを表示させる
+Future<void> revealInboxDestinationSelector(WidgetTester tester) async {
+  final selector = find.byKey(const ValueKey('inbox_destination_selector'));
+  if (selector.evaluate().isEmpty) return;
+  await tester.ensureVisible(selector);
   await settleFlowDoUi(tester);
 }
 
+/// Inbox 整理先の Bottom Sheet を開く
+Future<void> openInboxDestinationPicker(WidgetTester tester) async {
+  await revealInboxDestinationSelector(tester);
+  await tester.tap(find.byKey(const ValueKey('inbox_destination_selector')));
+  await tester.pump();
+  await settleFlowDoUi(tester);
+}
+
+/// @deprecated 互換用 — [revealInboxDestinationSelector] を使用
+Future<void> revealCategoryBar(WidgetTester tester) =>
+    revealInboxDestinationSelector(tester);
+
 /// 未完了リストのカテゴリーフィルター CategoryBar を表示させる
 Future<void> revealPendingCategoryFilterBar(WidgetTester tester) async {
-  final homeScroll = find.byType(CustomScrollView);
+  final homeScroll = find.descendant(
+    of: find.byKey(const ValueKey('flowdo_home_page_view')),
+    matching: find.byType(CustomScrollView),
+  );
   if (homeScroll.evaluate().isEmpty) return;
 
   for (var i = 0; i < 15; i++) {

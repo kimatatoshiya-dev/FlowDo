@@ -159,7 +159,10 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
   void _save() {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
-    Navigator.pop(context, TaskEditSaved(text));
+    Navigator.pop(
+      context,
+      TaskEditSaved(title: text),
+    );
   }
 
   @override

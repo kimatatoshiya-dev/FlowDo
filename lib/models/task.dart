@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'category_item.dart';
 import 'task_priority.dart';
+import 'task_repeat_type.dart';
 import '../utils/json_read.dart';
 
 /// タスク1件分のデータモデル
@@ -14,10 +15,10 @@ class Task {
     this.categoryId = CategoryItem.uncategorizedId,
     this.priorityStars = TaskPriorityStars.none,
     this.isFavorite = false,
-    this.pinnedAt,
     this.dueDate,
     this.reminderTime,
     this.completedAt,
+    this.repeatType = TaskRepeatType.none,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
@@ -28,10 +29,10 @@ class Task {
   String categoryId;
   int priorityStars;
   bool isFavorite;
-  DateTime? pinnedAt;
   DateTime? dueDate;
   TimeOfDay? reminderTime;
   DateTime? completedAt;
+  TaskRepeatType repeatType;
   final DateTime createdAt;
 
   static int _nextId = 0;
@@ -89,10 +90,10 @@ class Task {
     return title.toLowerCase().contains(query.toLowerCase());
   }
 
-  /// Inbox 内で未整理か（カテゴリー・期限・時間・📌 すべて未設定）
+  /// Inbox 内で未整理か（カテゴリー・期限・時間・📌重要 すべて未設定）
   bool get isInboxUnorganized {
     if (!isInbox) return false;
-    if (isFavorite || pinnedAt != null) return false;
+    if (isFavorite) return false;
     if (dueDate != null || reminderTime != null) return false;
     return categoryId == CategoryItem.uncategorizedId;
   }
@@ -105,12 +106,12 @@ class Task {
         'categoryId': categoryId,
         'priorityStars': priorityStars,
         'isFavorite': isFavorite,
-        'pinnedAt': pinnedAt?.toIso8601String(),
         'dueDate': dueDate?.toIso8601String(),
         'reminderTime': reminderTime == null
             ? null
             : _formatReminderTime(reminderTime!),
         'completedAt': completedAt?.toIso8601String(),
+        'repeatType': repeatType.name,
         'createdAt': createdAt.toIso8601String(),
       };
 
@@ -151,17 +152,7 @@ class Task {
       throw FormatException('Task requires id and title: $json');
     }
 
-    DateTime? pinnedAt;
-    final pinnedAtRaw = JsonRead.string(json['pinnedAt']);
-    if (pinnedAtRaw != null) {
-      pinnedAt = DateTime.tryParse(pinnedAtRaw);
-    }
-
     final isFavorite = json['isFavorite'] as bool? ?? false;
-    // 旧データ: 固定済みだが pinnedAt がない場合は作成日時で順序を安定化
-    if (isFavorite && pinnedAt == null) {
-      pinnedAt = createdAt;
-    }
 
     return Task(
       id: id,
@@ -172,10 +163,12 @@ class Task {
       categoryId: categoryId,
       priorityStars: priorityStars.clamp(0, TaskPriorityStars.max),
       isFavorite: isFavorite,
-      pinnedAt: pinnedAt,
       dueDate: dueDate,
       reminderTime: parseReminderTime(JsonRead.string(json['reminderTime'])),
       completedAt: completedAt,
+      repeatType: TaskRepeatTypeLabels.fromStorage(
+        JsonRead.string(json['repeatType']),
+      ),
       createdAt: createdAt,
     );
   }

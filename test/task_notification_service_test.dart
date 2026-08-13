@@ -92,11 +92,7 @@ Future<void> _applyReminderTime(
 ) async {
   task.reminderTime = reminderTime;
 
-  if (reminderTime == null ||
-      task.dueDate == null ||
-      task.isCompleted ||
-      !notificationService.preferences.enabled ||
-      notificationService.preferences.leadTime == NotificationLeadTime.none) {
+  if (!shouldScheduleTaskNotification(task, notificationService.preferences)) {
     await notificationService.cancelTask(task.id);
     return;
   }

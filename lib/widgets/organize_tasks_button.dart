@@ -6,14 +6,22 @@ class OrganizeTasksButton extends StatelessWidget {
     super.key,
     required this.count,
     required this.onPressed,
+    this.allCategoriesAssigned = false,
   });
 
   static const flowDoBlue = Color(0xFF007AFF);
+  static const flowDoGreen = Color(0xFF34C759);
 
   final int count;
   final VoidCallback? onPressed;
+  final bool allCategoriesAssigned;
 
   String get _label => count == 0 ? '整理する' : '$count件を整理する';
+
+  Color get _backgroundColor =>
+      allCategoriesAssigned ? flowDoGreen : flowDoBlue;
+
+  String get _leadingEmoji => allCategoriesAssigned ? '✅' : '🗂';
 
   @override
   Widget build(BuildContext context) {
@@ -27,9 +35,9 @@ class OrganizeTasksButton extends StatelessWidget {
           key: const ValueKey('organize_tasks_button'),
           onPressed: onPressed,
           style: FilledButton.styleFrom(
-            backgroundColor: flowDoBlue,
+            backgroundColor: _backgroundColor,
             foregroundColor: Colors.white,
-            disabledBackgroundColor: flowDoBlue.withValues(alpha: 0.35),
+            disabledBackgroundColor: _backgroundColor.withValues(alpha: 0.35),
             disabledForegroundColor: Colors.white.withValues(alpha: 0.7),
             elevation: 0,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -41,9 +49,9 @@ class OrganizeTasksButton extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                '🗂',
-                style: TextStyle(fontSize: 18, height: 1.1),
+              Text(
+                _leadingEmoji,
+                style: const TextStyle(fontSize: 18, height: 1.1),
               ),
               const SizedBox(width: 8),
               Text(

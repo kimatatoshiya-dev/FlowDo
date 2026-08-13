@@ -5,7 +5,7 @@ import '../theme/app_theme.dart';
 import '../utils/date_formatter.dart';
 import 'task_completion_toggle.dart';
 
-/// カレンダー日付タップ時の BottomSheet
+/// カレンダー日付タップ時 — その日のタスク一覧 BottomSheet
 class CalendarDayTaskSheet extends StatelessWidget {
   const CalendarDayTaskSheet({
     super.key,
@@ -22,6 +22,9 @@ class CalendarDayTaskSheet extends StatelessWidget {
   final bool Function(int taskId) isRemoving;
   final bool Function(int taskId) showCompletedStyle;
 
+  static const sheetHeightFactor = 0.88;
+  static const rowHeight = 52.0;
+
   static Future<void> show(
     BuildContext context, {
     required DateTime day,
@@ -33,7 +36,9 @@ class CalendarDayTaskSheet extends StatelessWidget {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      showDragHandle: true,
+      isDismissible: true,
+      enableDrag: true,
+      showDragHandle: false,
       builder: (context) => CalendarDayTaskSheet(
         day: day,
         entries: entries,
@@ -47,62 +52,61 @@ class CalendarDayTaskSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<FlowDoColors>()!;
-    final screenHeight = MediaQuery.sizeOf(context).height;
-    final summary = CalendarDaySheetSummary.fromEntries(entries);
     final visibleEntries = entries
         .where((entry) => !isRemoving(entry.taskId))
         .toList(growable: false);
-    const headerHeight = 118.0;
-    const rowHeight = 64.0;
-    final sheetHeight = (headerHeight + visibleEntries.length * rowHeight + 16)
-        .clamp(240.0, screenHeight * 0.78);
     final title = formatCalendarDayTitle(day);
 
-    return SafeArea(
-      child: SizedBox(
-        height: sheetHeight,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+    return FractionallySizedBox(
+      heightFactor: sheetHeightFactor,
+      child: Material(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        clipBehavior: Clip.antiAlias,
+        child: SafeArea(
+          top: false,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+              const _SheetDragHandle(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.3,
+                      ),
+                ),
               ),
-              if (summary.hasAny) ...[
-                const SizedBox(height: 12),
-                _CalendarDaySummaryRow(summary: summary),
-              ],
-              const SizedBox(height: 14),
               Expanded(
                 child: visibleEntries.isEmpty
-                    ? Align(
-                        alignment: Alignment.topLeft,
-                        child: Text(
-                          entries.isEmpty ? 'タスクはありません' : '残りのタスクはありません',
-                          style:
-                              Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: colors.secondaryLabel,
-                                  ),
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+                        child: Align(
+                          alignment: Alignment.topLeft,
+                          child: Text(
+                            entries.isEmpty
+                                ? 'タスクはありません'
+                                : '残りのタスクはありません',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(color: colors.secondaryLabel),
+                          ),
                         ),
                       )
-                    : ListView.builder(
-                        padding: EdgeInsets.zero,
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
                         itemCount: visibleEntries.length,
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(height: 8),
                         itemBuilder: (context, index) {
                           final entry = visibleEntries[index];
-                          return Padding(
-                            padding: EdgeInsets.only(
-                              bottom: index < visibleEntries.length - 1 ? 6 : 0,
-                            ),
-                            child: _CalendarTaskRow(
-                              entry: entry,
-                              completed: showCompletedStyle(entry.taskId),
-                              onToggle: () => onToggleTask(entry.taskId),
-                            ),
+                          return _DayTaskRow(
+                            entry: entry,
+                            completed: showCompletedStyle(entry.taskId),
+                            onToggle: () => onToggleTask(entry.taskId),
                           );
                         },
                       ),
@@ -115,93 +119,31 @@ class CalendarDayTaskSheet extends StatelessWidget {
   }
 }
 
-class _CalendarDaySummaryRow extends StatelessWidget {
-  const _CalendarDaySummaryRow({required this.summary});
-
-  final CalendarDaySheetSummary summary;
+class _SheetDragHandle extends StatelessWidget {
+  const _SheetDragHandle();
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<FlowDoColors>()!;
+    final colorScheme = Theme.of(context).colorScheme;
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 6,
-      children: [
-        if (summary.dueTodayCount > 0)
-          _CalendarSummaryChip(
-            emoji: '🔥',
-            label: '今日',
-            count: summary.dueTodayCount,
-            colors: colors,
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 6),
+        child: Container(
+          width: 36,
+          height: 5,
+          decoration: BoxDecoration(
+            color: colorScheme.onSurface.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(2.5),
           ),
-        if (summary.importantCount > 0)
-          _CalendarSummaryChip(
-            emoji: '📌',
-            label: '固定',
-            count: summary.importantCount,
-            colors: colors,
-          ),
-        if (summary.scheduledCount > 0)
-          _CalendarSummaryChip(
-            emoji: '🗓️',
-            label: '7日以内',
-            count: summary.scheduledCount,
-            colors: colors,
-          ),
-      ],
-    );
-  }
-}
-
-class _CalendarSummaryChip extends StatelessWidget {
-  const _CalendarSummaryChip({
-    required this.emoji,
-    required this.label,
-    required this.count,
-    required this.colors,
-  });
-
-  final String emoji;
-  final String label;
-  final int count;
-  final FlowDoColors colors;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: colors.completedTaskSurface,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text.rich(
-        TextSpan(
-          children: [
-            TextSpan(text: '$emoji '),
-            TextSpan(
-              text: label,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: colors.secondaryLabel,
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-            TextSpan(
-              text: '  $count件',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: colors.secondaryLabel.withValues(alpha: 0.85),
-                    fontWeight: FontWeight.w500,
-                  ),
-            ),
-          ],
         ),
       ),
     );
   }
 }
 
-class _CalendarTaskRow extends StatelessWidget {
-  const _CalendarTaskRow({
+class _DayTaskRow extends StatelessWidget {
+  const _DayTaskRow({
     required this.entry,
     required this.completed,
     required this.onToggle,
@@ -211,76 +153,61 @@ class _CalendarTaskRow extends StatelessWidget {
   final bool completed;
   final VoidCallback onToggle;
 
+  String? get _timeLabel {
+    if (entry.reminderTime == null) return null;
+    return DateFormatter.formatReminderTime(entry.reminderTime!);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<FlowDoColors>()!;
-    final subtitle = entry.reminderTime == null
-        ? '期限なし'
-        : DateFormatter.formatReminderTimeChip(entry.reminderTime!);
+    final timeLabel = _timeLabel;
 
     return SizedBox(
-      height: 64,
+      height: CalendarDayTaskSheet.rowHeight,
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: TaskCompletionToggle(
-              completed: completed,
-              onTap: onToggle,
-            ),
+          TaskCompletionToggle(
+            completed: completed,
+            onTap: onToggle,
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
+          _CategoryColorDot(
+            color: Color(entry.categoryColorValue),
+            completed: completed,
+          ),
+          const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    _CategoryColorDot(
-                      color: Color(entry.categoryColorValue),
-                      completed: completed,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: AnimatedDefaultTextStyle(
-                        duration: const Duration(milliseconds: 200),
-                        style: Theme.of(context).textTheme.bodyLarge!.copyWith(
-                              height: 1.25,
-                              fontWeight: FontWeight.w500,
-                              color: completed
-                                  ? colors.secondaryLabel
-                                  : Theme.of(context).colorScheme.onSurface,
-                              decoration:
-                                  completed ? TextDecoration.lineThrough : null,
-                              decorationColor: colors.secondaryLabel,
-                            ),
-                        child: Text(
-                          entry.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Padding(
-                  padding: const EdgeInsets.only(left: 16),
-                  child: AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 200),
-                    style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                          height: 1.2,
-                          color: completed
-                              ? colors.secondaryLabel.withValues(alpha: 0.75)
-                              : colors.secondaryLabel,
-                        ),
-                    child: Text(subtitle),
+            child: AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 200),
+              style: Theme.of(context).textTheme.bodyLarge!.copyWith(
+                    height: 1.25,
+                    fontWeight: FontWeight.w500,
+                    color: completed
+                        ? colors.secondaryLabel
+                        : Theme.of(context).colorScheme.onSurface,
+                    decoration:
+                        completed ? TextDecoration.lineThrough : null,
+                    decorationColor: colors.secondaryLabel,
                   ),
-                ),
-              ],
+              child: Text(
+                entry.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
+          if (timeLabel != null) ...[
+            const SizedBox(width: 16),
+            Text(
+              timeLabel,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colors.secondaryLabel,
+                    fontWeight: FontWeight.w500,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+            ),
+          ],
         ],
       ),
     );
@@ -299,9 +226,8 @@ class _CategoryColorDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: completed ? 7 : 8,
-      height: completed ? 7 : 8,
-      margin: EdgeInsets.only(top: completed ? 7 : 6),
+      width: completed ? 8 : 9,
+      height: completed ? 8 : 9,
       decoration: BoxDecoration(
         color: completed ? color.withValues(alpha: 0.45) : color,
         shape: BoxShape.circle,

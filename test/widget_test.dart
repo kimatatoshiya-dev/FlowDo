@@ -29,7 +29,6 @@ void main() {
       find.text(formatCalendarMonthTitle(DateTime.now())),
       findsOneWidget,
     );
-    expect(find.text('📌'), findsWidgets);
     expect(find.textContaining('ジムへ19時に行く'), findsOneWidget);
 
     await drainFlowDoTimers(tester);
@@ -63,14 +62,9 @@ void main() {
     await settleAfterTaskRegistration(tester);
 
     final taskTile = taskTileForTitle('編集テスト');
-    expect(
-      find.descendant(
-        of: taskTile,
-        matching: find.byKey(TaskTile.categoryColorDotKey),
-      ),
-      findsOneWidget,
-    );
-    expect(find.text('未整理'), findsOneWidget);
+    expect(find.text('編集テスト', skipOffstage: false), findsOneWidget);
+    expect(find.text('整理中'), findsOneWidget);
+    expect(find.text('0 / 1'), findsOneWidget);
     expect(
       find.descendant(of: taskTile, matching: find.text('☆なし')),
       findsOneWidget,
@@ -97,7 +91,7 @@ void main() {
 
     expectAiOrganizeButtonHidden();
     expectManualOrganizeButtonVisible(inboxCount: 1);
-    expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
+    expect(find.textContaining('整理待ちタスク', skipOffstage: false), findsOneWidget);
     expect(find.text('整理テスト', skipOffstage: false), findsOneWidget);
 
     await drainFlowDoTimers(tester);
@@ -123,7 +117,7 @@ void main() {
       expectAiOrganizeButtonHidden();
       expectManualOrganizeButtonVisible(inboxCount: 1);
     }
-    expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
+    expect(find.textContaining('整理待ちタスク', skipOffstage: false), findsOneWidget);
 
     await drainFlowDoTimers(tester);
   });
@@ -163,12 +157,12 @@ void main() {
     await tester.pump();
     await settleAfterTaskRegistration(tester);
 
-    expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
+    expect(find.textContaining('整理待ちタスク', skipOffstage: false), findsOneWidget);
 
     await organizeInboxTasks(tester, count: 1);
 
     expect(find.text('1件をタスクリストへ移動しました'), findsOneWidget);
-    expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
+    expect(find.textContaining('整理待ちタスク', skipOffstage: false), findsOneWidget);
     expect(find.text('整理する'), findsNothing);
     expect(find.text('整理ボタン確認', skipOffstage: false), findsOneWidget);
 
@@ -177,9 +171,9 @@ void main() {
 
   testWidgets('カテゴリー追加後も Red Screen にならない', (WidgetTester tester) async {
     await pumpFlowDoApp(tester);
-    await revealCategoryBar(tester);
+    await revealPendingCategoryFilterBar(tester);
 
-    final addChip = find.byKey(const ValueKey('inbox_category_add_chip'));
+    final addChip = find.byKey(const ValueKey('pending_category_add_chip'));
     await tester.ensureVisible(addChip);
     await settleFlowDoUi(tester);
     await tester.tap(addChip);
@@ -205,7 +199,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(
       find.descendant(
-        of: find.byKey(const ValueKey('inbox_category_bar')),
+        of: find.byKey(const ValueKey('pending_category_filter_bar')),
         matching: find.text('買い物'),
       ),
       findsOneWidget,
@@ -236,7 +230,7 @@ void main() {
     await drainFlowDoTimers(tester);
   });
 
-  testWidgets('整理先バー未選択時は登録タスクが未分類になる', (WidgetTester tester) async {
+  testWidgets('カテゴリー（全体）未選択時は登録タスクが未分類になる', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() {
@@ -274,7 +268,7 @@ void main() {
     await settleAfterDialogClosed(tester);
 
     expect(find.text('仕事に設定しました'), findsOneWidget);
-    expect(find.textContaining('追加したタスク', skipOffstage: false), findsOneWidget);
+    expect(find.textContaining('整理待ちタスク', skipOffstage: false), findsOneWidget);
 
     await tester.enterText(
       find.byKey(const ValueKey('task_input_field')),

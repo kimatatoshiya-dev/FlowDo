@@ -18,6 +18,7 @@ class FlowDoCalendarTaskEntry {
     required this.title,
     required this.kind,
     this.reminderTime,
+    this.dueDate,
     this.categoryColorValue = 0xFF8E8E93,
   });
 
@@ -25,6 +26,7 @@ class FlowDoCalendarTaskEntry {
   final String title;
   final FlowDoCalendarTaskKind kind;
   final TimeOfDay? reminderTime;
+  final DateTime? dueDate;
   final int categoryColorValue;
 }
 
@@ -289,6 +291,7 @@ List<FlowDoCalendarTaskEntry> calendarTasksForDay({
         title: task.title,
         kind: kind,
         reminderTime: task.reminderTime,
+        dueDate: task.dueDate == null ? null : dateOnly(task.dueDate!),
         categoryColorValue: category.colorValue,
       ),
     );
@@ -371,6 +374,6 @@ String calendarTaskKindEmoji(FlowDoCalendarTaskKind kind) {
   return switch (kind) {
     FlowDoCalendarTaskKind.important => '📌',
     FlowDoCalendarTaskKind.dueToday => '🔥',
-    FlowDoCalendarTaskKind.scheduled => '📅',
+    FlowDoCalendarTaskKind.scheduled => '🗓️',
   };
 }

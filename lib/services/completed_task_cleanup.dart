@@ -1,5 +1,6 @@
 import '../models/completed_task_retention.dart';
 import '../models/task.dart';
+import '../models/task_repeat_type.dart';
 
 /// 完了タスクの自動整理
 abstract final class CompletedTaskCleanup {
@@ -25,6 +26,7 @@ abstract final class CompletedTaskCleanup {
     final cutoff = Duration(days: days);
 
     return tasks.where((task) {
+      if (taskHasRepeatSchedule(task)) return true;
       if (!task.isCompleted) return true;
       final completedAt = task.completedAt ?? task.createdAt;
       return reference.difference(completedAt) < cutoff;

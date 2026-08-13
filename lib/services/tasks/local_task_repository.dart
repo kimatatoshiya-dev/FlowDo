@@ -123,7 +123,7 @@ class LocalTaskRepository implements TaskRepository {
         ..reminderTime = task.reminderTime
         ..completedAt = task.completedAt
         ..isFavorite = task.isFavorite
-        ..pinnedAt = task.pinnedAt;
+        ..repeatType = task.repeatType;
     }
     Task.syncNextId(tasks);
     await _persist(tasks);

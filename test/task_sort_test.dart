@@ -117,67 +117,39 @@ void main() {
         lessThan(0),
       );
     });
+
+    test('重要タスクは並び順に影響しない', () {
+      final normal = Task(id: 1, title: 'normal', priorityStars: 1);
+      final important = Task(
+        id: 2,
+        title: 'important',
+        priorityStars: 5,
+        isFavorite: true,
+      );
+
+      expect(
+        compareTasksBySortMode(
+          important,
+          normal,
+          TaskSortMode.priority,
+          categories,
+        ),
+        lessThan(0),
+      );
+    });
   });
 
   group('sortTaskList', () {
-    test('手動順は固定タスクだけ最上位へ', () {
-      final pinTime = DateTime(2026, 1, 1, 12);
+    test('手動順は id 順', () {
       final tasks = [
         Task(id: 3, title: 'c', priorityStars: TaskPriorityStars.max),
-        Task(id: 1, title: 'a', isFavorite: true, pinnedAt: pinTime),
+        Task(id: 1, title: 'a', isFavorite: true),
         Task(id: 2, title: 'b', priorityStars: 1),
       ];
 
       final sorted = sortTaskList(tasks, TaskSortMode.manual, categories);
 
       expect(sorted.map((t) => t.id).toList(), [1, 2, 3]);
-    });
-
-    test('固定タスク同士は📌した順', () {
-      final firstPin = DateTime(2026, 1, 1, 12);
-      final secondPin = DateTime(2026, 1, 1, 13);
-      final pinnedA = Task(
-        id: 1,
-        title: 'a',
-        isFavorite: true,
-        pinnedAt: firstPin,
-      );
-      final pinnedB = Task(
-        id: 2,
-        title: 'b',
-        isFavorite: true,
-        pinnedAt: secondPin,
-      );
-
-      expect(comparePinnedOrder(pinnedA, pinnedB), lessThan(0));
-
-      final sorted = sortTaskList(
-        [pinnedB, pinnedA],
-        TaskSortMode.priority,
-        categories,
-      );
-      expect(sorted.map((t) => t.id).toList(), [1, 2]);
-    });
-
-    test('固定タスクは優先度順でも最上位', () {
-      final normalHigh = Task(id: 1, title: 'normal', priorityStars: 5);
-      final importantLow = Task(
-        id: 2,
-        title: 'important',
-        priorityStars: 1,
-        isFavorite: true,
-        pinnedAt: DateTime(2026, 1, 1),
-      );
-
-      expect(
-        compareTasksBySortMode(
-          importantLow,
-          normalHigh,
-          TaskSortMode.priority,
-          categories,
-        ),
-        lessThan(0),
-      );
     });
 
     test('優先度順で未完了・完了をそれぞれ並び替える', () {
@@ -223,146 +195,6 @@ void main() {
 
       final completed = [older, newer]..sort(compareCompletedTasks);
       expect(completed.map((t) => t.id).toList(), [2, 1]);
-    });
-  });
-
-  group('pinReorderIndex', () {
-    test('固定 ON で既存固定の末尾へ', () {
-      final pinTime = DateTime(2026, 1, 1, 12);
-      final tasks = [
-        Task(id: 1, title: 'a', isFavorite: true, pinnedAt: pinTime),
-        Task(id: 2, title: 'b'),
-      ];
-      final pinned = Task(
-        id: 3,
-        title: 'c',
-        isFavorite: true,
-        pinnedAt: DateTime(2026, 1, 1, 13),
-      );
-
-      final index = pinReorderIndex(
-        tasks: tasks,
-        task: pinned,
-        sortMode: TaskSortMode.priority,
-        categories: categories,
-      );
-
-      expect(index, 1);
-    });
-
-    test('固定 ON で先頭固定がなければ先頭', () {
-      final tasks = [
-        Task(id: 1, title: 'a'),
-        Task(id: 3, title: 'c'),
-      ];
-      final pinned = Task(
-        id: 3,
-        title: 'c',
-        isFavorite: true,
-        pinnedAt: DateTime(2026, 1, 1),
-      );
-
-      final index = pinReorderIndex(
-        tasks: tasks,
-        task: pinned,
-        sortMode: TaskSortMode.priority,
-        categories: categories,
-      );
-
-      expect(index, 0);
-    });
-
-    test('再📌は固定グループの末尾へ', () {
-      final firstPin = DateTime(2026, 1, 1, 12);
-      final secondPin = DateTime(2026, 1, 1, 13);
-      final thirdPin = DateTime(2026, 1, 1, 14);
-      final tasks = [
-        Task(
-          id: 1,
-          title: 'a',
-          isFavorite: true,
-          pinnedAt: firstPin,
-        ),
-        Task(
-          id: 2,
-          title: 'b',
-          isFavorite: true,
-          pinnedAt: secondPin,
-        ),
-      ];
-      final repinnedA = Task(
-        id: 1,
-        title: 'a',
-        isFavorite: true,
-        pinnedAt: thirdPin,
-      );
-
-      final index = pinReorderIndex(
-        tasks: [tasks[1]],
-        task: repinnedA,
-        sortMode: TaskSortMode.priority,
-        categories: categories,
-      );
-
-      expect(index, 1);
-    });
-
-    test('固定 OFF でもリストから消えない位置へ', () {
-      final unpinned = Task(id: 1, title: 'pinned', priorityStars: 5);
-      final remaining = [Task(id: 2, title: 'normal', priorityStars: 1)];
-
-      final index = pinReorderIndex(
-        tasks: remaining,
-        task: unpinned,
-        sortMode: TaskSortMode.priority,
-        categories: categories,
-      );
-
-      expect(index, 1);
-    });
-  });
-
-  group('splitPinnedTasks', () {
-    test('固定タスクを先頭グループとして分割する', () {
-      final a = Task(id: 1, title: 'a', isFavorite: true);
-      final b = Task(id: 2, title: 'b');
-      final c = Task(id: 3, title: 'c', isFavorite: true);
-
-      final (pinned, unpinned) = splitPinnedTasks([a, b, c]);
-
-      expect(pinned.map((t) => t.id), [1, 3]);
-      expect(unpinned.map((t) => t.id), [2]);
-    });
-
-    test('固定レイアウト待機中は見た目だけ先に変える', () {
-      final pinnedTask = Task(id: 1, title: 'a', isFavorite: true);
-      final unpinnedTask = Task(id: 2, title: 'b');
-
-      final (pinning, unpinnedWhilePinning) = splitPinnedTasksForDisplay(
-        [pinnedTask, unpinnedTask],
-        pinLayoutDeferredTaskIds: {1},
-      );
-      expect(pinning, isEmpty);
-      expect(unpinnedWhilePinning.map((t) => t.id), [1, 2]);
-
-      final (pinnedWhileUnpinning, unpinning) = splitPinnedTasksForDisplay(
-        [pinnedTask, unpinnedTask],
-        pinLayoutDeferredTaskIds: {2},
-      );
-      expect(pinnedWhileUnpinning.map((t) => t.id), [1, 2]);
-      expect(unpinning, isEmpty);
-    });
-  });
-
-  group('applyPinnedAtOrder', () {
-    test('並び順どおりに pinnedAt を更新する', () {
-      final a = Task(id: 1, title: 'a', isFavorite: true);
-      final b = Task(id: 2, title: 'b', isFavorite: true);
-      applyPinnedAtOrder([b, a]);
-
-      expect(b.pinnedAt, isNotNull);
-      expect(a.pinnedAt, isNotNull);
-      expect(b.pinnedAt!.isBefore(a.pinnedAt!), isTrue);
     });
   });
 }

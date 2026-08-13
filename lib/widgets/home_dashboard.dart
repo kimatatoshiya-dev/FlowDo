@@ -516,7 +516,7 @@ class _CalendarDayCell extends StatelessWidget {
                           if (markers.showDueToday)
                             const Text('🔥', style: TextStyle(fontSize: 9, height: 1)),
                           if (markers.showScheduled)
-                            const Text('📅', style: TextStyle(fontSize: 9, height: 1)),
+                            const Text('🗓️', style: TextStyle(fontSize: 9, height: 1)),
                         ],
                       ),
                     )

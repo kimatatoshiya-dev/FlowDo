@@ -97,9 +97,8 @@ void main() {
     expect(find.byKey(const ValueKey('dashboard_summary_within7days')), findsOneWidget);
     expect(find.text('今日'), findsOneWidget);
     expect(find.text('7日以内'), findsOneWidget);
-    expect(find.text('🗓️'), findsOneWidget);
+    expect(find.text('🗓️'), findsWidgets);
     expect(find.text('🔥'), findsWidgets);
-    expect(find.text('📅'), findsWidgets);
     expect(find.text('日'), findsOneWidget);
     expect(find.text('土'), findsOneWidget);
     expect(find.text('今日やること'), findsNothing);
@@ -323,8 +322,8 @@ void main() {
     expect(find.text('ゆうと誕プレ'), findsOneWidget);
     expect(find.text('今日のタスク'), findsOneWidget);
     expect(find.text('7日以内のタスク'), findsOneWidget);
-    expect(find.textContaining('固定'), findsOneWidget);
-    expect(find.textContaining('今日'), findsWidgets);
+    expect(find.textContaining('固定'), findsNothing);
+    expect(find.textContaining('今日 1件'), findsNothing);
   });
 
   testWidgets('CalendarDayTaskSheet に完了トグル付き一覧を表示する',
@@ -335,7 +334,7 @@ void main() {
         home: Scaffold(
           body: CalendarDayTaskSheet(
             day: DateTime(2026, 8, 11),
-            entries: const [
+            entries: [
               FlowDoCalendarTaskEntry(
                 taskId: 1,
                 title: '重要タスク',
@@ -345,6 +344,7 @@ void main() {
                 taskId: 2,
                 title: '今日タスク',
                 kind: FlowDoCalendarTaskKind.dueToday,
+                dueDate: DateTime(2026, 8, 11),
               ),
             ],
             onToggleTask: (_) async {},
@@ -359,8 +359,8 @@ void main() {
     expect(find.text('8月11日（火）'), findsOneWidget);
     expect(find.text('重要タスク'), findsOneWidget);
     expect(find.text('今日タスク'), findsOneWidget);
-    expect(find.textContaining('固定'), findsOneWidget);
-    expect(find.textContaining('今日'), findsWidgets);
+    expect(find.textContaining('固定'), findsNothing);
+    expect(find.textContaining('今日 1件'), findsNothing);
     expect(find.byType(TaskCompletionToggle), findsNWidgets(2));
   });
 

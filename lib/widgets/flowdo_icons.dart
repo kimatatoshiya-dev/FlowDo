@@ -57,9 +57,9 @@ class TodayFocusLeadingIcon extends StatelessWidget {
           '🔥',
           style: TextStyle(fontSize: size, height: 1),
         ),
-      TodayFocusFilterKind.dueWithin7Days => FlowDoCalendar7Icon(
-          size: size,
-          color: color,
+      TodayFocusFilterKind.dueWithin7Days => Text(
+          '🗓️',
+          style: TextStyle(fontSize: size, height: 1),
         ),
     };
   }

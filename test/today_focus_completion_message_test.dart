@@ -150,7 +150,7 @@ void main() {
       tester,
       initialPreferences: {
         'flowdo_tasks':
-            '[{"id":0,"title":"重要A","isInbox":false,"isFavorite":true,"pinnedAt":"2026-01-01T00:00:00.000"},{"id":1,"title":"重要B","isInbox":false,"isFavorite":true,"pinnedAt":"2026-01-02T00:00:00.000"}]',
+            '[{"id":0,"title":"重要A","isInbox":false,"isFavorite":true},{"id":1,"title":"重要B","isInbox":false,"isFavorite":true}]',
       },
     );
     Task.syncNextId([

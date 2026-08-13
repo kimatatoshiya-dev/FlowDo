@@ -5,7 +5,7 @@ sealed class TaskEditResult {
 
 /// 保存して閉じた
 class TaskEditSaved extends TaskEditResult {
-  const TaskEditSaved(this.title);
+  const TaskEditSaved({required this.title});
 
   final String title;
 }
