@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/flowdo_calendar.dart';
@@ -5,7 +7,7 @@ import '../models/task.dart';
 import '../models/task_repeat_type.dart';
 import '../theme/app_theme.dart';
 import '../utils/date_formatter.dart';
-import '../widgets/daily_memo_editor.dart';
+import '../widgets/today_memo_section.dart';
 import '../widgets/task_completion_toggle.dart';
 
 /// 時刻帯に応じた今日画面の挨拶
@@ -182,6 +184,10 @@ class TodayPage extends StatelessWidget {
     this.embedded = false,
     this.tasks = const [],
     this.onRoutineToggle,
+    this.onToggleTask,
+    this.onTaskEdit,
+    this.showCompletedStyle,
+    this.isRemoving,
     this.memoText = '',
     this.onMemoChanged,
   });
@@ -197,6 +203,18 @@ class TodayPage extends StatelessWidget {
 
   /// ルーティンタスクの完了切替（未指定時は操作不可）
   final ValueChanged<Task>? onRoutineToggle;
+
+  /// 通常タスクの完了切替（未指定時は操作不可）
+  final Future<void> Function(Task task)? onToggleTask;
+
+  /// タスクタイトルタップで編集
+  final ValueChanged<Task>? onTaskEdit;
+
+  /// 完了待機中のチェック表示
+  final bool Function(Task task)? showCompletedStyle;
+
+  /// 完了アニメーションでリストから消える直前
+  final bool Function(Task task)? isRemoving;
 
   /// 表示日のメモ本文
   final String memoText;
@@ -233,6 +251,26 @@ class TodayPage extends StatelessWidget {
       referenceToday: referenceNow,
     );
     final routineTasks = todayRoutineTasks(tasks: tasks);
+    final showCompleted = showCompletedStyle;
+    final removing = isRemoving;
+
+    Widget buildTaskRow(
+      Task task, {
+      Widget? prefix,
+      Widget? trailing,
+      Future<void> Function()? onToggle,
+    }) {
+      return _TodayInteractiveTaskRow(
+        task: task,
+        completed: showCompleted?.call(task) ?? false,
+        removing: removing?.call(task) ?? false,
+        onToggle: onToggle,
+        onTitleTap: onTaskEdit == null ? null : () => onTaskEdit!(task),
+        prefix: prefix,
+        trailing: trailing,
+      );
+    }
+
     final content = SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
         horizontalPadding,
@@ -256,7 +294,12 @@ class TodayPage extends StatelessWidget {
                     colors,
                     '今日の最重要はありません',
                   )
-                : _TodaySimpleTaskRow(title: topPriorityTask.title),
+                : buildTaskRow(
+                    topPriorityTask,
+                    onToggle: onToggleTask == null
+                        ? null
+                        : () => onToggleTask!(topPriorityTask),
+                  ),
           ),
           const SizedBox(height: sectionSpacing),
           _TodaySectionCard(
@@ -271,12 +314,28 @@ class TodayPage extends StatelessWidget {
                     children: [
                       for (var i = 0; i < scheduleTasks.length; i++) ...[
                         if (i > 0) _sectionDivider(colors),
-                        _TodayScheduleRow(
-                          title: scheduleTasks[i].title,
-                          time: scheduleTasks[i].reminderTime == null
+                        buildTaskRow(
+                          scheduleTasks[i],
+                          onToggle: onToggleTask == null
                               ? null
-                              : DateFormatter.formatReminderTime(
-                                  scheduleTasks[i].reminderTime!,
+                              : () => onToggleTask!(scheduleTasks[i]),
+                          prefix: scheduleTasks[i].reminderTime == null
+                              ? null
+                              : Text(
+                                  DateFormatter.formatReminderTime(
+                                    scheduleTasks[i].reminderTime!,
+                                  ),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodyLarge
+                                      ?.copyWith(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: TodayPage.flowDoBlue,
+                                        fontFeatures: const [
+                                          FontFeature.tabularFigures(),
+                                        ],
+                                      ),
                                 ),
                         ),
                       ],
@@ -296,11 +355,21 @@ class TodayPage extends StatelessWidget {
                     children: [
                       for (var i = 0; i < within7DaysTasks.length; i++) ...[
                         if (i > 0) _sectionDivider(colors),
-                        _TodayUpcomingRow(
-                          title: within7DaysTasks[i].title,
-                          daysLeft: todayDaysUntilDue(
-                            within7DaysTasks[i],
-                            referenceNow,
+                        buildTaskRow(
+                          within7DaysTasks[i],
+                          onToggle: onToggleTask == null
+                              ? null
+                              : () => onToggleTask!(within7DaysTasks[i]),
+                          trailing: Text(
+                            'あと${todayDaysUntilDue(within7DaysTasks[i], referenceNow)}日',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  fontSize: 15,
+                                  color: colors.secondaryLabel,
+                                  fontWeight: FontWeight.w500,
+                                ),
                           ),
                         ),
                       ],
@@ -321,7 +390,7 @@ class TodayPage extends StatelessWidget {
                       for (var i = 0; i < routineTasks.length; i++) ...[
                         if (i > 0) _sectionDivider(colors),
                         _TodayRoutineTaskRow(
-                          title: routineTasks[i].title,
+                          task: routineTasks[i],
                           completed: DailyRoutineLogic.isCompletedToday(
                             routineTasks[i],
                             referenceNow,
@@ -329,13 +398,16 @@ class TodayPage extends StatelessWidget {
                           onToggle: onRoutineToggle == null
                               ? null
                               : () => onRoutineToggle!(routineTasks[i]),
+                          onTitleTap: onTaskEdit == null
+                              ? null
+                              : () => onTaskEdit!(routineTasks[i]),
                         ),
                       ],
                     ],
                   ),
           ),
           const SizedBox(height: sectionSpacing),
-          _TodayMemoSection(
+          TodayMemoSection(
             memoText: memoText,
             onMemoChanged: onMemoChanged,
           ),
@@ -496,200 +568,116 @@ class _TodaySectionCard extends StatelessWidget {
 
 class _TodayRoutineTaskRow extends StatelessWidget {
   const _TodayRoutineTaskRow({
-    required this.title,
+    required this.task,
     required this.completed,
     this.onToggle,
+    this.onTitleTap,
   });
 
-  final String title;
+  final Task task;
   final bool completed;
   final VoidCallback? onToggle;
+  final VoidCallback? onTitleTap;
 
   @override
   Widget build(BuildContext context) {
-    return _TodayTaskRowBase(
-      leading: TaskCompletionToggle(
-        completed: completed,
-        onTap: onToggle ?? _noop,
-      ),
-      title: title,
+    return _TodayInteractiveTaskRow(
+      task: task,
+      completed: completed,
+      removing: false,
+      onToggle: onToggle == null ? null : () async => onToggle!(),
+      onTitleTap: onTitleTap,
     );
   }
 }
 
-class _TodaySimpleTaskRow extends StatelessWidget {
-  const _TodaySimpleTaskRow({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return _TodayTaskRowBase(
-      leading: const TaskCompletionToggle(
-        completed: false,
-        onTap: _noop,
-      ),
-      title: title,
-    );
-  }
-}
-
-class _TodayScheduleRow extends StatelessWidget {
-  const _TodayScheduleRow({
-    required this.title,
-    this.time,
-  });
-
-  final String title;
-  final String? time;
-
-  @override
-  Widget build(BuildContext context) {
-    return _TodayTaskRowBase(
-      leading: const TaskCompletionToggle(
-        completed: false,
-        onTap: _noop,
-      ),
-      title: title,
-      prefix: time == null
-          ? null
-          : Text(
-              time!,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: TodayPage.flowDoBlue,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-            ),
-      trailing: const SizedBox.shrink(),
-    );
-  }
-}
-
-class _TodayUpcomingRow extends StatelessWidget {
-  const _TodayUpcomingRow({
-    required this.title,
-    required this.daysLeft,
-  });
-
-  final String title;
-  final int daysLeft;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<FlowDoColors>()!;
-
-    return _TodayTaskRowBase(
-      leading: const TaskCompletionToggle(
-        completed: false,
-        onTap: _noop,
-      ),
-      title: title,
-      trailing: Text(
-        'あと$daysLeft日',
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontSize: 15,
-              color: colors.secondaryLabel,
-              fontWeight: FontWeight.w500,
-            ),
-      ),
-    );
-  }
-}
-
-class _TodayTaskRowBase extends StatelessWidget {
-  const _TodayTaskRowBase({
-    required this.leading,
-    required this.title,
+class _TodayInteractiveTaskRow extends StatelessWidget {
+  const _TodayInteractiveTaskRow({
+    required this.task,
+    required this.completed,
+    required this.removing,
+    this.onToggle,
+    this.onTitleTap,
     this.prefix,
     this.trailing,
   });
 
-  final Widget leading;
-  final String title;
+  final Task task;
+  final bool completed;
+  final bool removing;
+  final Future<void> Function()? onToggle;
+  final VoidCallback? onTitleTap;
   final Widget? prefix;
   final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    final colors = Theme.of(context).extension<FlowDoColors>()!;
+
+    final row = SizedBox(
       height: 52,
       child: Row(
         children: [
-          leading,
+          TaskCompletionToggle(
+            completed: completed,
+            onTap: onToggle == null ? _noop : () => unawaited(onToggle!()),
+          ),
           const SizedBox(width: 12),
           if (prefix != null) ...[
             prefix!,
             const SizedBox(width: 10),
           ],
           Expanded(
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
+            child: onTitleTap == null
+                ? Text(
+                    task.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _titleStyle(context, colors, completed),
+                  )
+                : Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: onTitleTap,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Text(
+                          task.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: _titleStyle(context, colors, completed),
+                        ),
+                      ),
+                    ),
                   ),
-            ),
           ),
           if (trailing != null) trailing!,
         ],
       ),
     );
-  }
-}
 
-class _TodayMemoSection extends StatelessWidget {
-  const _TodayMemoSection({
-    required this.memoText,
-    this.onMemoChanged,
-  });
-
-  final String memoText;
-  final Future<void> Function(String text)? onMemoChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          '📝 今日メモ',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.15,
-              ),
-        ),
-        const SizedBox(height: 12),
-        if (onMemoChanged == null)
-          Container(
-            constraints: const BoxConstraints(minHeight: 140),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(TodayPage.cardRadius),
-            ),
-            padding: const EdgeInsets.all(16),
-            alignment: Alignment.topLeft,
-            child: Text(
-              memoText.isEmpty
-                  ? '今日の気付き・反省・アイデアを書きましょう'
-                  : memoText,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontSize: 16,
-                    height: 1.45,
-                  ),
-            ),
-          )
-        else
-          DailyMemoEditor(
-            initialText: memoText,
-            onSave: onMemoChanged!,
-          ),
-      ],
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+      alignment: Alignment.topCenter,
+      child: removing ? const SizedBox.shrink() : row,
     );
+  }
+
+  TextStyle? _titleStyle(
+    BuildContext context,
+    FlowDoColors colors,
+    bool completed,
+  ) {
+    return Theme.of(context).textTheme.bodyLarge?.copyWith(
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+          decoration: completed ? TextDecoration.lineThrough : null,
+          color: completed
+              ? colors.secondaryLabel
+              : Theme.of(context).colorScheme.onSurface,
+        );
   }
 }
 

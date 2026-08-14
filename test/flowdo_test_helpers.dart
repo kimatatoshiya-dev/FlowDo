@@ -110,7 +110,10 @@ Future<void> revealCategoryBar(WidgetTester tester) =>
 Future<void> revealPendingCategoryFilterBar(WidgetTester tester) async {
   final homeScroll = find.descendant(
     of: find.byKey(const ValueKey('flowdo_home_page_view')),
-    matching: find.byType(CustomScrollView),
+    matching: find.byWidgetPredicate(
+      (widget) =>
+          widget is CustomScrollView && widget.scrollDirection == Axis.vertical,
+    ),
   );
   if (homeScroll.evaluate().isEmpty) return;
 

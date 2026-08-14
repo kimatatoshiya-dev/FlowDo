@@ -46,6 +46,7 @@ import 'widgets/auth_gate.dart';
 import 'widgets/category_bar.dart';
 import 'widgets/category_name_dialog.dart';
 import 'widgets/calendar_day_task_sheet.dart';
+import 'widgets/dashboard_category_task_sheet.dart';
 import 'widgets/dashboard_summary_task_sheet.dart';
 import 'widgets/home_dashboard.dart';
 import 'widgets/inbox_category_picker_sheet.dart';
@@ -728,6 +729,16 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     );
   }
 
+  void _openTodayPage() {
+    _taskInputBarKey.currentState?.unfocus();
+    if (!_homePageViewController.hasClients) return;
+    _homePageViewController.animateToPage(
+      1,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeInOutCubic,
+    );
+  }
+
   Future<void> _showCalendarDaySheet(DateTime day, DateTime today) async {
     _refreshTodayFocusSheet();
     final memoText = await AppStorage.loadDailyMemo(day);
@@ -822,6 +833,58 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         if (index < 0) return false;
         return _showsCompletedStyle(_tasks[index]);
       },
+    );
+  }
+
+  Future<void> _showDashboardCategorySheet(CategoryItem category) async {
+    _refreshTodayFocusSheet();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => ValueListenableBuilder<int>(
+        valueListenable: _todayFocusSheetRevision,
+        builder: (context, _, __) {
+          final tasks = sortTaskList(
+            _tasks
+                .where(
+                  (task) =>
+                      task.categoryId == category.id && !task.isCompleted,
+                )
+                .toList(),
+            TaskSortMode.priority,
+            _categories,
+          );
+
+          return DashboardCategoryTaskSheet(
+            category: category,
+            tasks: tasks,
+            referenceToday: dateOnly(DateTime.now()),
+            onTaskTap: (taskId) {
+              Navigator.pop(context);
+              final index = _tasks.indexWhere((task) => task.id == taskId);
+              if (index < 0) return;
+              unawaited(_showEditTaskSheet(_tasks[index]));
+            },
+            onToggleTask: (taskId) async {
+              final index = _tasks.indexWhere((task) => task.id == taskId);
+              if (index < 0) return;
+              final task = _tasks[index];
+              if (!task.isCompleted &&
+                  !_completingTaskIds.contains(task.id)) {
+                unawaited(widget.feedbackService.playLightHaptic());
+              }
+              await _toggleTask(task, quietCompletionFeedback: true);
+            },
+            isRemoving: (taskId) => _removingTaskIds.contains(taskId),
+            showCompletedStyle: (taskId) {
+              final index = _tasks.indexWhere((task) => task.id == taskId);
+              if (index < 0) return false;
+              return _showsCompletedStyle(_tasks[index]);
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -1292,7 +1355,9 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       if (!mounted) return;
 
       setState(() {
-        _categories = results[0] as List<CategoryItem>;
+        _categories = CategoryItem.normalizeDisplayOrder(
+          results[0] as List<CategoryItem>,
+        );
         _lastRegistrationCategoryId = results[1] as String?;
         _showInputGuidance = results[2] as bool;
         _showInboxGuidance = results[3] as bool;
@@ -1560,10 +1625,14 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     final newCategory = CategoryItem.create(
       name: name,
       colorValue: categoryColorPalette[colorIndex],
+      displayOrder: CategoryItem.nextDisplayOrder(_categories),
     );
 
     setState(() {
-      _categories = [..._categories, newCategory];
+      _categories = CategoryItem.sortedByDisplayOrder([
+        ..._categories,
+        newCategory,
+      ]);
     });
 
     await _saveCategories();
@@ -1588,10 +1657,10 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       if (index < 0) return;
 
       setState(() {
-        _categories = [
+        _categories = CategoryItem.sortedByDisplayOrder([
           for (final item in _categories)
             if (item.id == category.id) item.copyWith(name: newName) else item,
-        ];
+        ]);
       });
 
       await _saveCategories();
@@ -1604,8 +1673,11 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('カテゴリーを削除'),
-        content: Text('「${category.name}」を削除しますか？\n関連タスクは未分類になります。'),
+        title: const Text('グループを削除'),
+        content: Text(
+          '「${category.name}」グループを削除しますか？\n'
+          'このグループのタスクは「未選択」へ移動します。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -1629,18 +1701,38 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       if (!mounted) return;
 
       setState(() {
-        _categories = [
+        _categories = CategoryItem.sortedByDisplayOrder([
           for (final item in _categories)
             if (item.id != category.id) item,
-        ];
+        ]);
         if (_categoryFilterIds.contains(category.id)) {
           _categoryFilterIds.remove(category.id);
         }
+        _inboxSelectedCategoryIds.remove(category.id);
       });
 
       await _saveCategories();
       await _onCategoryDeleted(category.id);
     });
+  }
+
+  Future<void> _reorderCategories(int oldIndex, int newIndex) async {
+    if (!mounted) return;
+
+    final reorderedBarCategories = reorderFilterBarCategories(
+      _categories,
+      oldIndex,
+      newIndex,
+    );
+
+    setState(() {
+      _categories = CategoryItem.applyBarOrder(
+        _categories,
+        reorderedBarCategories,
+      );
+    });
+
+    await _saveCategories();
   }
 
   Future<void> _onCategoryDeleted(String deletedId) async {
@@ -1650,6 +1742,35 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
           task.categoryId = CategoryItem.uncategorizedId;
         }
       }
+    });
+  }
+
+  void _setCategoryFilterSelection(String? id) {
+    if (id == null) {
+      _categoryFilterIds.clear();
+    } else if (_categoryFilterIds.contains(id)) {
+      _categoryFilterIds.remove(id);
+    } else {
+      _categoryFilterIds.add(id);
+    }
+  }
+
+  void _onCategoryFilterSelected(String? id) {
+    final previousOffset = _scrollController.hasClients
+        ? _scrollController.offset
+        : null;
+
+    setState(() => _setCategoryFilterSelection(id));
+
+    if (previousOffset == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.jumpTo(
+        previousOffset.clamp(
+          _scrollController.position.minScrollExtent,
+          _scrollController.position.maxScrollExtent,
+        ),
+      );
     });
   }
 
@@ -1958,12 +2079,11 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     }
 
     final result = <CategoryIncompleteCount>[];
-    for (final category in _categories) {
+    for (final category in CategoryItem.filterBarCategories(_categories)) {
       final count = counts[category.id];
       if (count == null || count == 0) continue;
       result.add(CategoryIncompleteCount(category: category, count: count));
     }
-    result.sort((a, b) => b.count.compareTo(a.count));
     return result;
   }
 
@@ -2399,6 +2519,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                       controller: _inputController,
                       onSubmit: _registerTasks,
                       onFocusChanged: _onInputFocusChanged,
+                      onTodayMemoTap: _openTodayPage,
                       showGuidance: _showInputGuidance,
                     ),
                   ),
@@ -2441,6 +2562,9 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                                 key: const ValueKey('inbox_group_preview_bar'),
                                 categories: _categories,
                                 onAdd: _addCategory,
+                                onRename: _renameCategory,
+                                onDelete: _deleteCategory,
+                                onReorder: _reorderCategories,
                               ),
                             ),
                           Padding(
@@ -2535,6 +2659,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                         TodayFocusFilterKind.dueWithin7Days,
                       ),
                       categoryCounts: _categoryIncompleteCounts,
+                      onCategoryCountTap: _showDashboardCategorySheet,
                     ),
                   ),
                   if (!_isLoading)
@@ -2570,20 +2695,11 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                             ),
                             addButtonKey:
                                 const ValueKey('pending_category_add_chip'),
-                            onSelected: (id) {
-                              setState(() {
-                                if (id == null) {
-                                  _categoryFilterIds.clear();
-                                } else if (_categoryFilterIds.contains(id)) {
-                                  _categoryFilterIds.remove(id);
-                                } else {
-                                  _categoryFilterIds.add(id);
-                                }
-                              });
-                            },
+                            onSelected: _onCategoryFilterSelected,
                             onAdd: _addCategory,
                             onRename: _renameCategory,
                             onDelete: _deleteCategory,
+                            onReorder: _reorderCategories,
                           ),
                         ],
                         ),
@@ -2673,6 +2789,17 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                     },
                     onRoutineToggle: (task) =>
                         unawaited(_toggleTask(task)),
+                    onToggleTask: (task) async {
+                      if (!task.isCompleted &&
+                          !_completingTaskIds.contains(task.id)) {
+                        unawaited(widget.feedbackService.playLightHaptic());
+                      }
+                      await _toggleTask(task, quietCompletionFeedback: true);
+                    },
+                    onTaskEdit: (task) =>
+                        unawaited(_showEditTaskSheet(task)),
+                    showCompletedStyle: _showsCompletedStyle,
+                    isRemoving: _isRemovingTask,
                   ),
                 ],
               ),

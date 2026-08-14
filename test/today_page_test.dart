@@ -259,6 +259,84 @@ void main() {
     expect(savedText, '振り返り');
   });
 
+  testWidgets('TodayPage の ○ タップで onToggleTask を呼ぶ', (WidgetTester tester) async {
+    final task = sampleTask(
+      id: 10,
+      title: '会議資料',
+      dueDate: today,
+    );
+    Task? toggledTask;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: TodayPage(
+          now: DateTime(2026, 8, 13, 14, 0),
+          tasks: [task],
+          onToggleTask: (value) async {
+            toggledTask = value;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byType(TaskCompletionToggle).first);
+    await tester.pump();
+
+    expect(toggledTask?.id, 10);
+  });
+
+  testWidgets('TodayPage のタイトルタップで onTaskEdit を呼ぶ',
+      (WidgetTester tester) async {
+    final task = sampleTask(
+      id: 11,
+      title: '編集対象',
+      dueDate: today,
+    );
+    Task? editedTask;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: TodayPage(
+          now: DateTime(2026, 8, 13, 14, 0),
+          tasks: [task],
+          onTaskEdit: (value) => editedTask = value,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('編集対象'));
+    await tester.pump();
+
+    expect(editedTask?.id, 11);
+  });
+
+  testWidgets('TodayPage は完了待機中の行を isRemoving で隠す',
+      (WidgetTester tester) async {
+    final task = sampleTask(
+      id: 12,
+      title: '消える予定',
+      dueDate: today,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: TodayPage(
+          now: DateTime(2026, 8, 13, 14, 0),
+          tasks: [task],
+          isRemoving: (value) => value.id == 12,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('消える予定'), findsNothing);
+  });
+
   testWidgets('ホーム PageView に Today 画面が組み込まれている',
       (WidgetTester tester) async {
     await pumpFlowDoApp(tester);

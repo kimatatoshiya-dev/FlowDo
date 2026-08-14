@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/category_item.dart';
 import '../models/flowdo_calendar.dart';
 import '../models/task.dart';
+import '../models/flowdo_dashboard_stats.dart';
 import '../theme/app_theme.dart';
 
 /// カテゴリー別の未完了件数
@@ -29,6 +30,7 @@ class HomeDashboard extends StatefulWidget {
     this.onTodaySummaryTap,
     this.onWeekSummaryTap,
     this.onImportantSummaryTap,
+    this.onCategoryCountTap,
     this.today,
   });
 
@@ -39,6 +41,7 @@ class HomeDashboard extends StatefulWidget {
   final VoidCallback? onTodaySummaryTap;
   final VoidCallback? onWeekSummaryTap;
   final VoidCallback? onImportantSummaryTap;
+  final ValueChanged<CategoryItem>? onCategoryCountTap;
   final DateTime? today;
 
   @override
@@ -51,6 +54,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   late DateTime _displayedMonth;
 
   static const _calendarPageHeight = 452.0;
+  static const _dashboardCardRadius = 18.0;
 
   @override
   void initState() {
@@ -115,7 +119,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   onWeekSummaryTap: widget.onWeekSummaryTap,
                   onImportantSummaryTap: widget.onImportantSummaryTap,
                 ),
-                _CategoryAnalysisPage(categoryCounts: widget.categoryCounts),
+                _FlowDoStatsDashboardPage(
+                  tasks: widget.tasks,
+                  categoryCounts: widget.categoryCounts,
+                  today: widget.today,
+                  onCategoryCountTap: widget.onCategoryCountTap,
+                ),
               ],
             ),
           ),
@@ -548,112 +557,347 @@ class _CalendarDayCell extends StatelessWidget {
   }
 }
 
-class _CategoryAnalysisPage extends StatelessWidget {
-  const _CategoryAnalysisPage({required this.categoryCounts});
+class _FlowDoStatsDashboardPage extends StatelessWidget {
+  const _FlowDoStatsDashboardPage({
+    required this.tasks,
+    required this.categoryCounts,
+    this.today,
+    this.onCategoryCountTap,
+  });
 
+  final List<Task> tasks;
   final List<CategoryIncompleteCount> categoryCounts;
+  final DateTime? today;
+  final ValueChanged<CategoryItem>? onCategoryCountTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<FlowDoColors>()!;
+    final referenceToday = dateOnly(today ?? DateTime.now());
+    final stats = FlowDoDashboardStats.fromTasks(
+      tasks: tasks,
+      leadingCategoryName:
+          categoryCounts.isEmpty ? null : categoryCounts.first.category.name,
+      referenceToday: referenceToday,
+    );
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
       decoration: BoxDecoration(
         color: colors.groupedSurface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'カテゴリー別',
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: colors.secondaryLabel,
-                  fontWeight: FontWeight.w600,
+            '📊 ダッシュボード',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.2,
                 ),
           ),
-          const SizedBox(height: 12),
-          if (categoryCounts.isEmpty)
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '未完了タスクはありません',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: colors.secondaryLabel,
+          const SizedBox(height: 14),
+          Expanded(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _DashboardWeatherCard(weather: stats.weather),
+                  const SizedBox(height: 12),
+                  _DashboardSectionCard(
+                    title: 'カテゴリー',
+                    child: categoryCounts.isEmpty
+                        ? Text(
+                            '未完了タスクはありません',
+                            style:
+                                Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: colors.secondaryLabel,
+                                    ),
+                          )
+                        : Column(
+                            children: [
+                              for (var i = 0; i < categoryCounts.length; i++) ...[
+                                if (i > 0) const SizedBox(height: 10),
+                                _DashboardCategoryRow(
+                                  item: categoryCounts[i],
+                                  onTap: onCategoryCountTap == null
+                                      ? null
+                                      : () => onCategoryCountTap!(
+                                            categoryCounts[i].category,
+                                          ),
+                                ),
+                              ],
+                            ],
+                          ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _DashboardMetricCard(
+                          emoji: '🔥',
+                          label: '今日達成率',
+                          value: '${stats.achievement.percent}%',
+                        ),
                       ),
-                ),
-              ),
-            )
-          else
-            Expanded(
-              child: ListView.separated(
-                padding: EdgeInsets.zero,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: categoryCounts.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final item = categoryCounts[index];
-                  return _StatRow(
-                    emoji: categoryEmoji(item.category),
-                    label: item.category.name,
-                    count: item.count,
-                    accent: item.category.color,
-                  );
-                },
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _DashboardMetricCard(
+                          emoji: '🏆',
+                          label: '今月完了数',
+                          value: '${stats.monthlyCompletedCount}件',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _DashboardAiCommentCard(comment: stats.aiComment),
+                ],
               ),
             ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _StatRow extends StatelessWidget {
-  const _StatRow({
-    required this.emoji,
-    required this.label,
-    required this.count,
-    required this.accent,
-  });
+class _DashboardWeatherCard extends StatelessWidget {
+  const _DashboardWeatherCard({required this.weather});
 
-  final String emoji;
-  final String label;
-  final int count;
-  final Color accent;
+  final DashboardWeatherSnapshot weather;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<FlowDoColors>()!;
 
-    return Row(
+    return _DashboardSurfaceCard(
+      child: Row(
+        children: [
+          Text(
+            '📍${weather.locationLabel}',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colors.secondaryLabel,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const Spacer(),
+          Text(
+            '☀️${weather.temperatureCelsius}℃',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '☔${weather.precipitationPercent}%',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: colors.secondaryLabel,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardSectionCard extends StatelessWidget {
+  const _DashboardSectionCard({
+    required this.title,
+    required this.child,
+  });
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowDoColors>()!;
+
+    return _DashboardSurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: colors.secondaryLabel,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardCategoryRow extends StatelessWidget {
+  const _DashboardCategoryRow({
+    required this.item,
+    this.onTap,
+  });
+
+  final CategoryIncompleteCount item;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowDoColors>()!;
+
+    final content = Row(
       children: [
-        Text(emoji, style: const TextStyle(fontSize: 18, height: 1)),
+        Text(
+          categoryEmoji(item.category),
+          style: const TextStyle(fontSize: 18, height: 1),
+        ),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            label,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colors.secondaryLabel,
+            item.category.name,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  fontWeight: FontWeight.w500,
                 ),
           ),
         ),
         Text(
-          '$count',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          '${item.count}件',
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                 fontWeight: FontWeight.w700,
-                color: accent,
+                color: item.category.color,
               ),
         ),
-        const SizedBox(width: 2),
-        Text(
-          '件',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colors.secondaryLabel,
-              ),
-        ),
+        if (onTap != null) ...[
+          const SizedBox(width: 4),
+          Icon(
+            Icons.chevron_right,
+            size: 18,
+            color: colors.secondaryLabel.withValues(alpha: 0.55),
+          ),
+        ],
       ],
+    );
+
+    if (onTap == null) return content;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: ValueKey('dashboard_category_row_${item.category.id}'),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: content,
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardMetricCard extends StatelessWidget {
+  const _DashboardMetricCard({
+    required this.emoji,
+    required this.label,
+    required this.value,
+  });
+
+  final String emoji;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowDoColors>()!;
+
+    return _DashboardSurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            emoji,
+            style: const TextStyle(fontSize: 18, height: 1.1),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: colors.secondaryLabel,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.4,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardAiCommentCard extends StatelessWidget {
+  const _DashboardAiCommentCard({required this.comment});
+
+  final String comment;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowDoColors>()!;
+
+    return _DashboardSurfaceCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('🤖', style: TextStyle(fontSize: 22, height: 1.1)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              comment,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    height: 1.45,
+                    color: colors.secondaryLabel.withValues(alpha: 0.95),
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardSurfaceCard extends StatelessWidget {
+  const _DashboardSurfaceCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(
+          _HomeDashboardState._dashboardCardRadius,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: child,
     );
   }
 }
@@ -661,13 +905,14 @@ class _StatRow extends StatelessWidget {
 /// カテゴリー名に合わせた表示用アイコン
 String categoryEmoji(CategoryItem category) {
   return switch (category.id) {
-    'work' => '📁',
-    'personal' => '🏠',
+    'work' => '💼',
     'shopping' => '🛒',
     _ => switch (category.name) {
-        '仕事' => '📁',
-        '家庭' || '私用' => '🏠',
+        '仕事' => '💼',
         '買い物' => '🛒',
+        '趣味' => '🎨',
+        'FlowDo' => '💡',
+        '家庭' || '私用' => '🏠',
         _ => '📁',
       },
   };

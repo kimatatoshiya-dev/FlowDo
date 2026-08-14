@@ -10,11 +10,17 @@ class InboxGroupPreviewBar extends StatefulWidget {
     super.key,
     required this.categories,
     required this.onAdd,
+    required this.onRename,
+    required this.onDelete,
+    required this.onReorder,
     this.addButtonKey = const ValueKey('inbox_category_add_chip'),
   });
 
   final List<CategoryItem> categories;
   final ValueChanged<String> onAdd;
+  final ValueChanged<CategoryItem> onRename;
+  final ValueChanged<CategoryItem> onDelete;
+  final void Function(int oldIndex, int newIndex) onReorder;
   final Key addButtonKey;
 
   @override
@@ -23,6 +29,7 @@ class InboxGroupPreviewBar extends StatefulWidget {
 
 class _InboxGroupPreviewBarState extends State<InboxGroupPreviewBar> {
   bool _isDialogOpen = false;
+  final CategoryChipGestureTracker _chipGestures = CategoryChipGestureTracker();
 
   Future<void> _showAddDialog() async {
     if (_isDialogOpen) return;
@@ -31,11 +38,7 @@ class _InboxGroupPreviewBarState extends State<InboxGroupPreviewBar> {
 
     String? name;
     try {
-      name = await showCategoryNameDialog(
-        context,
-        title: 'カテゴリー追加',
-        confirmLabel: '追加',
-      );
+      name = await promptAddCategoryName(context);
     } finally {
       if (mounted) {
         setState(() => _isDialogOpen = false);
@@ -50,6 +53,27 @@ class _InboxGroupPreviewBarState extends State<InboxGroupPreviewBar> {
     if (mounted) {
       widget.onAdd(name);
     }
+  }
+
+  Future<void> _showCategoryActions(CategoryItem category) async {
+    if (_isDialogOpen || category.isSystem) return;
+
+    await showCategoryActionsSheet(
+      context,
+      category: category,
+      onRename: widget.onRename,
+      onDelete: widget.onDelete,
+    );
+  }
+
+  void _handleCategoryChipTap(CategoryItem category) {
+    _chipGestures.handleTap(
+      chipId: category.id,
+      onSingleTap: () {},
+      onDoubleTap: category.isSystem
+          ? null
+          : () => _showCategoryActions(category),
+    );
   }
 
   @override
@@ -67,65 +91,40 @@ class _InboxGroupPreviewBarState extends State<InboxGroupPreviewBar> {
       child: SizedBox(
         height: kCategoryChipTapHeight,
         child: ScrollConfiguration(
-          behavior: const _CategoryBarScrollBehavior(),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            clipBehavior: Clip.none,
-            padding: const EdgeInsets.only(right: 4),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var i = 0; i < items.length; i++) ...[
-                  if (i > 0) const SizedBox(width: kCategoryChipSpacing),
-                  _GroupPreviewChip(category: items[i]),
-                ],
-                const SizedBox(width: kCategoryChipSpacing),
-                _InboxAddCategoryChip(
-                  key: widget.addButtonKey,
-                  enabled: !_isDialogOpen,
-                  onTap: _showAddDialog,
+          behavior: const CategoryBarScrollBehavior(),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: HorizontalReorderableChipRow(
+                  itemCount: items.length,
+                  onReorder: widget.onReorder,
+                  itemBuilder: (context, index) {
+                    final category = items[index];
+                    return Padding(
+                      padding: EdgeInsets.only(
+                        right: index == items.length - 1
+                            ? kCategoryChipSpacing
+                            : kCategoryChipSpacing,
+                      ),
+                      child: CategoryGroupChip(
+                        key: ValueKey('inbox_category_chip_${category.id}'),
+                        label: category.name,
+                        color: category.color,
+                        visual: CategoryGroupChipVisual.preview,
+                        onTap: () => _handleCategoryChipTap(category),
+                      ),
+                    );
+                  },
                 ),
-              ],
-            ),
+              ),
+              _InboxAddCategoryChip(
+                key: widget.addButtonKey,
+                enabled: !_isDialogOpen,
+                onTap: _showAddDialog,
+              ),
+            ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _GroupPreviewChip extends StatelessWidget {
-  const _GroupPreviewChip({required this.category});
-
-  final CategoryItem category;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Material(
-      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
-      shape: StadiumBorder(
-        side: BorderSide(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.45),
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircleAvatar(radius: 5, backgroundColor: category.color),
-            const SizedBox(width: 8),
-            Text(
-              category.name,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: colorScheme.onSurface.withValues(alpha: 0.88),
-                  ),
-            ),
-          ],
         ),
       ),
     );
@@ -180,32 +179,5 @@ class _InboxAddCategoryChip extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-/// [CategoryBar] と同じスクロール挙動
-class _CategoryBarScrollBehavior extends ScrollBehavior {
-  const _CategoryBarScrollBehavior();
-
-  @override
-  Widget buildScrollbar(
-    BuildContext context,
-    Widget child,
-    ScrollableDetails details,
-  ) {
-    return child;
-  }
-
-  @override
-  ScrollPhysics getScrollPhysics(BuildContext context) {
-    switch (Theme.of(context).platform) {
-      case TargetPlatform.iOS:
-      case TargetPlatform.macOS:
-        return const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
-        );
-      default:
-        return const AlwaysScrollableScrollPhysics();
-    }
   }
 }

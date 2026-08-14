@@ -104,13 +104,22 @@ class DashboardSummaryTaskSheet extends StatelessWidget {
                         itemBuilder: (context, index) {
                           final entry = entries[index];
                           final removing = isRemoving(entry.task.taskId);
-                          if (removing) return const SizedBox.shrink();
 
-                          return _DashboardSummaryTaskRow(
-                            entry: entry,
-                            completed: showCompletedStyle(entry.task.taskId),
-                            onToggle: () => onToggleTask(entry.task.taskId),
-                            onTap: () => onTaskTap(entry.task.taskId),
+                          return AnimatedSize(
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeOut,
+                            alignment: Alignment.topCenter,
+                            child: removing
+                                ? const SizedBox.shrink()
+                                : _DashboardSummaryTaskRow(
+                                    entry: entry,
+                                    completed:
+                                        showCompletedStyle(entry.task.taskId),
+                                    onToggle: () =>
+                                        onToggleTask(entry.task.taskId),
+                                    onTitleTap: () =>
+                                        onTaskTap(entry.task.taskId),
+                                  ),
                           );
                         },
                       ),
@@ -128,13 +137,13 @@ class _DashboardSummaryTaskRow extends StatelessWidget {
     required this.entry,
     required this.completed,
     required this.onToggle,
-    required this.onTap,
+    required this.onTitleTap,
   });
 
   final TodayFocusListEntry entry;
   final bool completed;
   final VoidCallback onToggle;
-  final VoidCallback onTap;
+  final VoidCallback onTitleTap;
 
   @override
   Widget build(BuildContext context) {
@@ -144,43 +153,50 @@ class _DashboardSummaryTaskRow extends StatelessWidget {
       color: colors.groupedSurface,
       borderRadius: BorderRadius.circular(12),
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: SizedBox(
-          height: DashboardSummaryTaskSheet.rowHeight,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                TaskCompletionToggle(
-                  completed: completed,
-                  onTap: onToggle,
-                ),
-                const SizedBox(width: 12),
-                TodayFocusLeadingIcon(kind: entry.kind),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    entry.task.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.w500,
-                          decoration:
-                              completed ? TextDecoration.lineThrough : null,
-                          color: completed
-                              ? colors.secondaryLabel
-                              : Theme.of(context).colorScheme.onSurface,
-                        ),
+      child: SizedBox(
+        height: DashboardSummaryTaskSheet.rowHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              TaskCompletionToggle(
+                completed: completed,
+                onTap: onToggle,
+              ),
+              const SizedBox(width: 12),
+              TodayFocusLeadingIcon(kind: entry.kind),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: onTitleTap,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        entry.task.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.w500,
+                              decoration:
+                                  completed ? TextDecoration.lineThrough : null,
+                              color: completed
+                                  ? colors.secondaryLabel
+                                  : Theme.of(context).colorScheme.onSurface,
+                            ),
+                      ),
+                    ),
                   ),
                 ),
-                Icon(
-                  Icons.chevron_right,
-                  size: 20,
-                  color: colors.secondaryLabel.withValues(alpha: 0.65),
-                ),
-              ],
-            ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: colors.secondaryLabel.withValues(alpha: 0.65),
+              ),
+            ],
           ),
         ),
       ),

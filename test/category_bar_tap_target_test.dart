@@ -32,6 +32,7 @@ void main() {
                 onAdd: (_) {},
                 onRename: (_) {},
                 onDelete: (_) {},
+                onReorder: (_, __) {},
               );
             },
           ),
@@ -89,6 +90,7 @@ void main() {
               onAdd: (_) {},
               onRename: (_) {},
               onDelete: (_) {},
+              onReorder: (_, __) {},
             ),
           ),
         ),
@@ -135,6 +137,7 @@ void main() {
                 onAdd: (_) {},
                 onRename: (_) {},
                 onDelete: (_) {},
+                onReorder: (_, __) {},
               );
             },
           ),
@@ -181,6 +184,7 @@ void main() {
             onAdd: (_) {},
             onRename: (_) {},
             onDelete: (_) {},
+            onReorder: (_, __) {},
           ),
         ),
       ),

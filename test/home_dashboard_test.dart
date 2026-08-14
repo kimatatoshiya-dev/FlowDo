@@ -364,7 +364,9 @@ void main() {
     expect(find.byType(TaskCompletionToggle), findsNWidgets(2));
   });
 
-  testWidgets('2ページ目にカテゴリー別件数を表示する', (WidgetTester tester) async {
+  testWidgets('2ページ目にダッシュボード統計を表示する', (WidgetTester tester) async {
+    CategoryItem? tappedCategory;
+
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
@@ -380,34 +382,47 @@ void main() {
             ],
             onCalendarDayTap: (_, __) {},
             onOpenTodayFocusSheet: () {},
+            onCategoryCountTap: (category) => tappedCategory = category,
           ),
         ),
       ),
     );
 
-    await tester.drag(find.byType(PageView), const Offset(-400, 0));
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.drag(find.byType(PageView), const Offset(-800, 0));
+    await tester.pumpAndSettle();
 
-    expect(find.text('カテゴリー別'), findsOneWidget);
+    expect(find.text('📊 ダッシュボード'), findsOneWidget);
+    expect(find.textContaining('現在地'), findsOneWidget);
+    expect(find.text('☀️31℃'), findsOneWidget);
+    expect(find.text('☔40%'), findsOneWidget);
+    expect(find.text('カテゴリー'), findsOneWidget);
     expect(find.text('仕事'), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.ancestor(
-          of: find.text('仕事'),
-          matching: find.byType(Row),
-        ),
-        matching: find.text('18'),
-      ),
-      findsOneWidget,
-    );
+    expect(find.text('18件'), findsOneWidget);
+    expect(find.text('今日達成率'), findsOneWidget);
+    expect(find.text('0%'), findsOneWidget);
+    expect(find.text('今月完了数'), findsOneWidget);
+    expect(find.text('0件'), findsOneWidget);
+    expect(find.textContaining('仕事タスクが多め'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('dashboard_category_row_work')));
+    await tester.pump();
+
+    expect(tappedCategory?.name, '仕事');
   });
 
   test('categoryEmoji はカテゴリー名に応じた絵文字を返す', () {
-    expect(categoryEmoji(CategoryItem.defaults()[1]), '📁');
+    expect(categoryEmoji(CategoryItem.defaults()[1]), '💼');
     expect(
       categoryEmoji(CategoryItem.create(name: '買い物', colorValue: 0xFFFF9500)),
       '🛒',
+    );
+    expect(
+      categoryEmoji(CategoryItem.create(name: '趣味', colorValue: 0xFF5856D6)),
+      '🎨',
+    );
+    expect(
+      categoryEmoji(CategoryItem.create(name: 'FlowDo', colorValue: 0xFF34C759)),
+      '💡',
     );
   });
 

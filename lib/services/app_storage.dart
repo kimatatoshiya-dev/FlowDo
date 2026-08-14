@@ -564,8 +564,9 @@ class AppStorage {
         }
       }
 
-      final loaded =
-          categories.isEmpty ? CategoryItem.defaults() : categories;
+      final loaded = CategoryItem.normalizeDisplayOrder(
+        categories.isEmpty ? CategoryItem.defaults() : categories,
+      );
       return CategoryItem.ensureRegistrationDefaults(loaded);
     } catch (error, stack) {
       debugPrint('Failed to load categories: $error');

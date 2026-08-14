@@ -9,11 +9,32 @@ void main() {
           name: '未分類',
           colorValue: 0xFF8E8E93,
           isSystem: true,
+          displayOrder: 0,
         ),
-        CategoryItem(id: 'work', name: '仕事', colorValue: 0xFF007AFF),
-        CategoryItem(id: 'personal', name: 'プライベート', colorValue: 0xFF34C759),
-        CategoryItem(id: 'shopping', name: '買い物', colorValue: 0xFFFF9500),
-        CategoryItem(id: 'running', name: 'ランニング', colorValue: 0xFF5856D6),
+        CategoryItem(
+          id: 'work',
+          name: '仕事',
+          colorValue: 0xFF007AFF,
+          displayOrder: 1,
+        ),
+        CategoryItem(
+          id: 'personal',
+          name: 'プライベート',
+          colorValue: 0xFF34C759,
+          displayOrder: 2,
+        ),
+        CategoryItem(
+          id: 'shopping',
+          name: '買い物',
+          colorValue: 0xFFFF9500,
+          displayOrder: 3,
+        ),
+        CategoryItem(
+          id: 'running',
+          name: 'ランニング',
+          colorValue: 0xFF5856D6,
+          displayOrder: 4,
+        ),
       ];
 
   group('nextCategoryId', () {

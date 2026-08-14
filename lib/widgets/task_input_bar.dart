@@ -11,12 +11,14 @@ class TaskInputBar extends StatefulWidget {
     required this.controller,
     required this.onSubmit,
     this.onFocusChanged,
+    this.onTodayMemoTap,
     this.showGuidance = false,
   });
 
   final TextEditingController controller;
   final VoidCallback onSubmit;
   final ValueChanged<bool>? onFocusChanged;
+  final VoidCallback? onTodayMemoTap;
   final bool showGuidance;
 
   @override
@@ -117,100 +119,171 @@ class TaskInputBarState extends State<TaskInputBar> {
                 ),
           ),
           const SizedBox(height: 16),
-          Padding(
-            padding: EdgeInsets.only(top: widget.showGuidance ? 6 : 0),
-            child: FlowDoFlowCanvas(
-            isFocused: isFocused,
-            isDark: isDark,
-            showGuidance: widget.showGuidance,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _captionRow(
-                    text: '今、浮かんだこと',
-                    markIntensity: markIntensity,
-                    style: captionStyle,
-                  ),
-                  const SizedBox(height: 14),
-                  Stack(
-                    alignment: Alignment.topLeft,
-                    children: [
-                      TextField(
-                        key: const ValueKey('task_input_field'),
-                        controller: widget.controller,
-                        focusNode: _focusNode,
-                        decoration: const InputDecoration(
-                          filled: false,
-                          fillColor: Colors.transparent,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
-                          isDense: true,
-                          hoverColor: Colors.transparent,
-                        ),
-                        maxLines: 8,
-                        minLines: 3,
-                        keyboardType: TextInputType.multiline,
-                        textInputAction: TextInputAction.newline,
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              height: 1.5,
-                              letterSpacing: -0.1,
-                            ),
-                        cursorColor: colorScheme.primary,
-                        cursorWidth: 1.5,
-                      ),
-                      if (_showExample)
-                        IgnorePointer(
-                          child: Text(
-                            _exampleText,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(
-                                  color: colors.secondaryLabel
-                                      .withValues(alpha: 0.28),
-                                  height: 1.5,
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(top: widget.showGuidance ? 6 : 0),
+                  child: FlowDoFlowCanvas(
+                    isFocused: isFocused,
+                    isDark: isDark,
+                    showGuidance: widget.showGuidance,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _captionRow(
+                            text: '今、浮かんだこと',
+                            markIntensity: markIntensity,
+                            style: captionStyle,
+                          ),
+                          const SizedBox(height: 14),
+                          Stack(
+                            alignment: Alignment.topLeft,
+                            children: [
+                              TextField(
+                                key: const ValueKey('task_input_field'),
+                                controller: widget.controller,
+                                focusNode: _focusNode,
+                                decoration: const InputDecoration(
+                                  filled: false,
+                                  fillColor: Colors.transparent,
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  disabledBorder: InputBorder.none,
+                                  contentPadding: EdgeInsets.zero,
+                                  isDense: true,
+                                  hoverColor: Colors.transparent,
                                 ),
+                                maxLines: 8,
+                                minLines: 3,
+                                keyboardType: TextInputType.multiline,
+                                textInputAction: TextInputAction.newline,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyLarge
+                                    ?.copyWith(
+                                      height: 1.5,
+                                      letterSpacing: -0.1,
+                                    ),
+                                cursorColor: colorScheme.primary,
+                                cursorWidth: 1.5,
+                              ),
+                              if (_showExample)
+                                IgnorePointer(
+                                  child: Text(
+                                    _exampleText,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                          color: colors.secondaryLabel
+                                              .withValues(alpha: 0.28),
+                                          height: 1.5,
+                                        ),
+                                  ),
+                                ),
+                            ],
                           ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: _captionRow(
-                          text: '改行でどんどん追加 → 登録',
-                          markIntensity: markIntensity,
-                          style: captionStyle,
-                        ),
-                      ),
-                      FilledButton(
-                        onPressed: widget.onSubmit,
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 18,
-                            vertical: 9,
+                          const SizedBox(height: 14),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: _captionRow(
+                                  text: '改行でどんどん追加 → 登録',
+                                  markIntensity: markIntensity,
+                                  style: captionStyle,
+                                ),
+                              ),
+                              FilledButton(
+                                onPressed: widget.onSubmit,
+                                style: FilledButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 18,
+                                    vertical: 9,
+                                  ),
+                                  minimumSize: const Size(0, 36),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  elevation: 0,
+                                ),
+                                child: const Text('登録'),
+                              ),
+                            ],
                           ),
-                          minimumSize: const Size(0, 36),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          elevation: 0,
-                        ),
-                        child: const Text('登録'),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ],
+                ),
               ),
+              if (widget.onTodayMemoTap != null) ...[
+                const SizedBox(width: 8),
+                Padding(
+                  padding: EdgeInsets.only(top: widget.showGuidance ? 6 : 0),
+                  child: _TodayMemoShortcutButton(
+                    onTap: widget.onTodayMemoTap!,
+                  ),
+                ),
+              ],
+            ],
             ),
           ),
-          ),
         ],
+      ),
+    );
+  }
+}
+
+class _TodayMemoShortcutButton extends StatelessWidget {
+  const _TodayMemoShortcutButton({required this.onTap});
+
+  static const _iosSystemGreen = Color(0xFF34C759);
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    const labelStyle = TextStyle(
+      color: Colors.white,
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+      height: 1.15,
+      letterSpacing: -0.2,
+    );
+
+    return Material(
+      color: _iosSystemGreen,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      elevation: 0,
+      child: InkWell(
+        key: const ValueKey('today_memo_shortcut'),
+        onTap: onTap,
+        child: SizedBox(
+          width: 46,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.edit_outlined,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                const SizedBox(height: 8),
+                for (final character in '今日メモ'.split(''))
+                  Text(character, style: labelStyle),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -132,7 +132,9 @@ abstract final class FlowDoBackupService {
     for (final category in imported) {
       mergedById[category.id] = category;
     }
-    return CategoryItem.ensureRegistrationDefaults(mergedById.values.toList());
+    return CategoryItem.normalizeDisplayOrder(
+      CategoryItem.ensureRegistrationDefaults(mergedById.values.toList()),
+    );
   }
 
   static void _repairTaskCategoryReferences(
