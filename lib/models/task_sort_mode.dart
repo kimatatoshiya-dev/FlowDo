@@ -29,6 +29,10 @@ int compareTasksBySortMode(
 }
 
 int _compareByPriority(Task a, Task b) {
+  final favoriteCompare =
+      (b.isFavorite ? 1 : 0).compareTo(a.isFavorite ? 1 : 0);
+  if (favoriteCompare != 0) return favoriteCompare;
+
   final urgencyCompare = _urgencyRank(a).compareTo(_urgencyRank(b));
   if (urgencyCompare != 0) return urgencyCompare;
 

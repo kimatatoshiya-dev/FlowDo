@@ -41,10 +41,10 @@ void main() {
     await tester.pump();
 
     expect(find.text('8月13日（木）'), findsOneWidget);
+    expect(find.text('📝 今日メモ'), findsOneWidget);
     expect(find.text('ゆうと誕プレ'), findsOneWidget);
     expect(find.text('打ち合わせ'), findsOneWidget);
     expect(find.text('12:00'), findsOneWidget);
-    expect(find.textContaining('今日'), findsNothing);
     expect(find.textContaining('7日以内'), findsNothing);
     expect(find.textContaining('固定'), findsNothing);
     expect(find.byType(TaskCompletionToggle), findsNWidgets(2));

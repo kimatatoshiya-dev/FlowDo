@@ -22,6 +22,7 @@ class TaskDueDateTimeSheet extends StatefulWidget {
     required this.onDueDateChanged,
     required this.onReminderTimeChanged,
     required this.onRepeatTypeChanged,
+    this.onNotificationReschedule,
     this.promptForTimeOnOpen = false,
   });
 
@@ -35,6 +36,7 @@ class TaskDueDateTimeSheet extends StatefulWidget {
   final Future<void> Function(DateTime? dueDate) onDueDateChanged;
   final Future<void> Function(TimeOfDay? reminderTime) onReminderTimeChanged;
   final Future<void> Function(TaskRepeatType repeatType) onRepeatTypeChanged;
+  final Future<void> Function()? onNotificationReschedule;
   final bool promptForTimeOnOpen;
 
   static Future<void> show(
@@ -49,6 +51,7 @@ class TaskDueDateTimeSheet extends StatefulWidget {
     required Future<void> Function(DateTime? dueDate) onDueDateChanged,
     required Future<void> Function(TimeOfDay? reminderTime) onReminderTimeChanged,
     required Future<void> Function(TaskRepeatType repeatType) onRepeatTypeChanged,
+    Future<void> Function()? onNotificationReschedule,
     bool promptForTimeOnOpen = false,
   }) {
     return showModalBottomSheet<void>(
@@ -66,6 +69,7 @@ class TaskDueDateTimeSheet extends StatefulWidget {
         onDueDateChanged: onDueDateChanged,
         onReminderTimeChanged: onReminderTimeChanged,
         onRepeatTypeChanged: onRepeatTypeChanged,
+        onNotificationReschedule: onNotificationReschedule,
         promptForTimeOnOpen: promptForTimeOnOpen,
       ),
     );
@@ -123,8 +127,11 @@ class _TaskDueDateTimeSheetState extends State<TaskDueDateTimeSheet> {
     if (_permissionRequesting) return;
     setState(() => _permissionRequesting = true);
     try {
-      await widget.onRequestNotificationPermission();
+      final granted = await widget.onRequestNotificationPermission();
       await _refreshPermissionStatus();
+      if (granted) {
+        await widget.onNotificationReschedule?.call();
+      }
     } finally {
       if (mounted) {
         setState(() => _permissionRequesting = false);
@@ -233,12 +240,13 @@ class _TaskDueDateTimeSheetState extends State<TaskDueDateTimeSheet> {
 
     setState(() => _repeatType = selected);
     await _runSave(() => widget.onRepeatTypeChanged(selected));
-    if (!mounted) return;
-    await _scheduleTaskNotificationIfNeeded();
   }
 
-  Future<void> _scheduleTaskNotificationIfNeeded() async {
-    await _refreshPermissionStatus();
+  Future<void> _finishSheet() async {
+    if (_isSaving) return;
+    await widget.onNotificationReschedule?.call();
+    if (!mounted) return;
+    Navigator.pop(context);
   }
 
   Future<void> _runSave(Future<void> Function() action) async {
@@ -331,7 +339,7 @@ class _TaskDueDateTimeSheetState extends State<TaskDueDateTimeSheet> {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
-                onPressed: _isSaving ? null : () => Navigator.pop(context),
+                onPressed: _isSaving ? null : () => unawaited(_finishSheet()),
                 child: Text(
                   '完了',
                   style: TextStyle(

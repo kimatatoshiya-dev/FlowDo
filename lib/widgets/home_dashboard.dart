@@ -28,6 +28,7 @@ class HomeDashboard extends StatefulWidget {
     required this.categoryCounts,
     this.onTodaySummaryTap,
     this.onWeekSummaryTap,
+    this.onImportantSummaryTap,
     this.today,
   });
 
@@ -37,6 +38,7 @@ class HomeDashboard extends StatefulWidget {
   final List<CategoryIncompleteCount> categoryCounts;
   final VoidCallback? onTodaySummaryTap;
   final VoidCallback? onWeekSummaryTap;
+  final VoidCallback? onImportantSummaryTap;
   final DateTime? today;
 
   @override
@@ -111,6 +113,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   onNextMonth: _goToNextMonth,
                   onTodaySummaryTap: widget.onTodaySummaryTap,
                   onWeekSummaryTap: widget.onWeekSummaryTap,
+                  onImportantSummaryTap: widget.onImportantSummaryTap,
                 ),
                 _CategoryAnalysisPage(categoryCounts: widget.categoryCounts),
               ],
@@ -150,6 +153,7 @@ class _FlowDoCalendarPage extends StatelessWidget {
     required this.onNextMonth,
     this.onTodaySummaryTap,
     this.onWeekSummaryTap,
+    this.onImportantSummaryTap,
   });
 
   final FlowDoCalendarMonthData calendarData;
@@ -159,6 +163,7 @@ class _FlowDoCalendarPage extends StatelessWidget {
   final VoidCallback onNextMonth;
   final VoidCallback? onTodaySummaryTap;
   final VoidCallback? onWeekSummaryTap;
+  final VoidCallback? onImportantSummaryTap;
 
   static const _weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -179,6 +184,7 @@ class _FlowDoCalendarPage extends StatelessWidget {
         children: [
           _CalendarSummaryRow(
             summary: calendarData.summary,
+            onImportantTap: onImportantSummaryTap,
             onTodayTap: onTodaySummaryTap,
             onWeekTap: onWeekSummaryTap,
           ),
@@ -305,11 +311,13 @@ class _FlowDoCalendarPage extends StatelessWidget {
 class _CalendarSummaryRow extends StatelessWidget {
   const _CalendarSummaryRow({
     required this.summary,
+    this.onImportantTap,
     this.onTodayTap,
     this.onWeekTap,
   });
 
   final FlowDoCalendarSummary summary;
+  final VoidCallback? onImportantTap;
   final VoidCallback? onTodayTap;
   final VoidCallback? onWeekTap;
 
@@ -324,18 +332,29 @@ class _CalendarSummaryRow extends StatelessWidget {
         if (summary.importantCount > 0)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              children: [
-                const Text('📌', style: TextStyle(fontSize: 14, height: 1)),
-                const SizedBox(width: 4),
-                Text(
-                  '${summary.importantCount}件',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: colors.secondaryLabel,
-                        fontWeight: FontWeight.w600,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                key: const ValueKey('dashboard_summary_important'),
+                onTap: onImportantTap,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      const Text('📌', style: TextStyle(fontSize: 14, height: 1)),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${summary.importantCount}件',
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                              color: colors.secondaryLabel,
+                              fontWeight: FontWeight.w600,
+                            ),
                       ),
+                    ],
+                  ),
                 ),
-              ],
+              ),
             ),
           ),
         Row(

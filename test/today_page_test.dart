@@ -233,6 +233,32 @@ void main() {
     expect(find.text('0%'), findsOneWidget);
   });
 
+  testWidgets('今日メモを編集すると自動保存コールバックが呼ばれる',
+      (WidgetTester tester) async {
+    var savedText = '';
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: TodayPage(
+          now: today,
+          memoText: '',
+          onMemoChanged: (text) async {
+            savedText = text;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('daily_memo_field')),
+      '振り返り',
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(savedText, '振り返り');
+  });
+
   testWidgets('ホーム PageView に Today 画面が組み込まれている',
       (WidgetTester tester) async {
     await pumpFlowDoApp(tester);

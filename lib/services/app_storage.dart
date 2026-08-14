@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/daily_memo.dart';
 import '../models/category_item.dart';
 import '../models/completed_task_retention.dart';
 import '../models/feedback_preferences.dart';
@@ -34,6 +35,7 @@ class AppStorage {
   static const _favoriteGuidanceSeenKey = 'flowdo_favorite_guidance_seen';
   static const _notificationPermissionPromptedKey =
       'flowdo_notification_permission_prompted';
+  static const _dailyMemosKey = 'flowdo_daily_memos';
   static const _maxPrefsAttempts = 20;
   static const _prefsRetryBaseDelay = Duration(milliseconds: 100);
   static const _ensureReadyTimeout = Duration(seconds: 60);
@@ -846,6 +848,60 @@ class AppStorage {
       debugPrint('Failed to mark notification permission prompt: $error');
       debugPrint(stack.toString());
       return false;
+    }
+  }
+
+  static Future<String> loadDailyMemo(DateTime day) async {
+    try {
+      final prefs = await _ensurePrefs();
+      if (prefs == null) return '';
+
+      final jsonString = prefs.getString(_dailyMemosKey);
+      if (jsonString == null || jsonString.isEmpty) return '';
+
+      final decoded = jsonDecode(jsonString);
+      if (decoded is! Map<String, dynamic>) return '';
+
+      return decoded[dailyMemoStorageKey(day)] as String? ?? '';
+    } catch (error, stack) {
+      debugPrint('Failed to load daily memo: $error');
+      debugPrint(stack.toString());
+      return '';
+    }
+  }
+
+  static Future<void> saveDailyMemo(DateTime day, String text) async {
+    try {
+      final prefs = await _ensurePrefs();
+      if (prefs == null) return;
+
+      final key = dailyMemoStorageKey(day);
+      final jsonString = prefs.getString(_dailyMemosKey);
+      final memos = <String, String>{};
+
+      if (jsonString != null && jsonString.isNotEmpty) {
+        final decoded = jsonDecode(jsonString);
+        if (decoded is Map<String, dynamic>) {
+          for (final entry in decoded.entries) {
+            final value = entry.value;
+            if (value is String && value.isNotEmpty) {
+              memos[entry.key] = value;
+            }
+          }
+        }
+      }
+
+      final trimmed = text.trim();
+      if (trimmed.isEmpty) {
+        memos.remove(key);
+      } else {
+        memos[key] = trimmed;
+      }
+
+      await prefs.setString(_dailyMemosKey, jsonEncode(memos));
+    } catch (error, stack) {
+      debugPrint('Failed to save daily memo: $error');
+      debugPrint(stack.toString());
     }
   }
 

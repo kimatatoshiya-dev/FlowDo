@@ -147,4 +147,18 @@ void main() {
     expect(await AppStorage.consumeNotificationPermissionPrompt(), isTrue);
     expect(await AppStorage.consumeNotificationPermissionPrompt(), isFalse);
   });
+
+  test('日付ごとの今日メモを保存と読み込みできる', () async {
+    SharedPreferences.setMockInitialValues({});
+    await AppStorage.warmUp();
+
+    final day = DateTime(2026, 8, 14);
+    expect(await AppStorage.loadDailyMemo(day), '');
+
+    await AppStorage.saveDailyMemo(day, ' 振り返りメモ ');
+    expect(await AppStorage.loadDailyMemo(day), '振り返りメモ');
+
+    await AppStorage.saveDailyMemo(day, '   ');
+    expect(await AppStorage.loadDailyMemo(day), '');
+  });
 }

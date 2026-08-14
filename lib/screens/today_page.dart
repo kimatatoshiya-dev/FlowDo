@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import '../models/flowdo_calendar.dart';
 import '../models/task.dart';
 import '../models/task_repeat_type.dart';
-import '../models/task_repeat_type.dart';
 import '../theme/app_theme.dart';
 import '../utils/date_formatter.dart';
+import '../widgets/daily_memo_editor.dart';
 import '../widgets/task_completion_toggle.dart';
 
 /// 時刻帯に応じた今日画面の挨拶
@@ -182,6 +182,8 @@ class TodayPage extends StatelessWidget {
     this.embedded = false,
     this.tasks = const [],
     this.onRoutineToggle,
+    this.memoText = '',
+    this.onMemoChanged,
   });
 
   /// テスト用。未指定時は [DateTime.now] を使用
@@ -195,6 +197,12 @@ class TodayPage extends StatelessWidget {
 
   /// ルーティンタスクの完了切替（未指定時は操作不可）
   final ValueChanged<Task>? onRoutineToggle;
+
+  /// 表示日のメモ本文
+  final String memoText;
+
+  /// メモ自動保存
+  final Future<void> Function(String text)? onMemoChanged;
 
   static const backgroundColor = Color(0xFFF5F5F7);
   static const flowDoBlue = Color(0xFF007AFF);
@@ -327,7 +335,10 @@ class TodayPage extends StatelessWidget {
                   ),
           ),
           const SizedBox(height: sectionSpacing),
-          const _TodayMemoCard(),
+          _TodayMemoSection(
+            memoText: memoText,
+            onMemoChanged: onMemoChanged,
+          ),
           const SizedBox(height: sectionSpacing),
           _TodayAchievementCard(progress: achievement.progress),
         ],
@@ -630,13 +641,17 @@ class _TodayTaskRowBase extends StatelessWidget {
   }
 }
 
-class _TodayMemoCard extends StatelessWidget {
-  const _TodayMemoCard();
+class _TodayMemoSection extends StatelessWidget {
+  const _TodayMemoSection({
+    required this.memoText,
+    this.onMemoChanged,
+  });
+
+  final String memoText;
+  final Future<void> Function(String text)? onMemoChanged;
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<FlowDoColors>()!;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -649,30 +664,30 @@ class _TodayMemoCard extends StatelessWidget {
               ),
         ),
         const SizedBox(height: 12),
-        Container(
-          constraints: const BoxConstraints(minHeight: 140),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(TodayPage.cardRadius),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
-              ),
-            ],
+        if (onMemoChanged == null)
+          Container(
+            constraints: const BoxConstraints(minHeight: 140),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(TodayPage.cardRadius),
+            ),
+            padding: const EdgeInsets.all(16),
+            alignment: Alignment.topLeft,
+            child: Text(
+              memoText.isEmpty
+                  ? '今日の気付き・反省・アイデアを書きましょう'
+                  : memoText,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontSize: 16,
+                    height: 1.45,
+                  ),
+            ),
+          )
+        else
+          DailyMemoEditor(
+            initialText: memoText,
+            onSave: onMemoChanged!,
           ),
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-          alignment: Alignment.topLeft,
-          child: Text(
-            '今日の気付き・反省・アイデアを書きましょう',
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  fontSize: 16,
-                  height: 1.45,
-                  color: colors.secondaryLabel.withValues(alpha: 0.85),
-                ),
-          ),
-        ),
       ],
     );
   }

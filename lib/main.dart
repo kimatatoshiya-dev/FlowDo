@@ -46,6 +46,7 @@ import 'widgets/auth_gate.dart';
 import 'widgets/category_bar.dart';
 import 'widgets/category_name_dialog.dart';
 import 'widgets/calendar_day_task_sheet.dart';
+import 'widgets/dashboard_summary_task_sheet.dart';
 import 'widgets/home_dashboard.dart';
 import 'widgets/inbox_category_picker_sheet.dart';
 import 'widgets/inbox_destination_selector.dart';
@@ -505,6 +506,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       TodayFocusCompletionMessages();
   int? _pendingTodayFocusCelebrationTaskId;
   Set<int>? _inboxOrganizationCelebratedIds;
+  String _todayMemoText = '';
 
   @override
   void initState() {
@@ -728,6 +730,9 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
 
   Future<void> _showCalendarDaySheet(DateTime day, DateTime today) async {
     _refreshTodayFocusSheet();
+    final memoText = await AppStorage.loadDailyMemo(day);
+    if (!mounted) return;
+
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -744,6 +749,14 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
             today: today,
             categories: _categories,
           ),
+          memoText: memoText,
+          onMemoChanged: (text) async {
+            await AppStorage.saveDailyMemo(day, text);
+            if (!mounted) return;
+            if (isSameDay(day, dateOnly(DateTime.now()))) {
+              setState(() => _todayMemoText = text.trim());
+            }
+          },
           onToggleTask: (taskId) async {
             final index = _tasks.indexWhere((task) => task.id == taskId);
             if (index < 0) return;
@@ -761,6 +774,54 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
           },
         ),
       ),
+    );
+  }
+
+  Future<void> _showDashboardSummarySheet(TodayFocusFilterKind kind) async {
+    _refreshTodayFocusSheet();
+    final section =
+        _todayFocusSections.firstWhere((entry) => entry.kind == kind);
+    final entries = section.tasks
+        .map((task) => TodayFocusListEntry(task: task, kind: kind))
+        .toList(growable: false);
+
+    final title = switch (kind) {
+      TodayFocusFilterKind.important => '📌 重要タスク',
+      TodayFocusFilterKind.dueToday => '🔥 今日期限',
+      TodayFocusFilterKind.dueWithin7Days => '🗓️ 7日以内',
+    };
+    final subtitle = switch (kind) {
+      TodayFocusFilterKind.important => '重要としてマークしたタスクです',
+      TodayFocusFilterKind.dueToday => '今日が期限のタスクです',
+      TodayFocusFilterKind.dueWithin7Days => '7日以内に期限があるタスクです',
+    };
+
+    await DashboardSummaryTaskSheet.show(
+      context,
+      title: title,
+      subtitle: subtitle,
+      entries: entries,
+      onTaskTap: (taskId) {
+        Navigator.pop(context);
+        final index = _tasks.indexWhere((task) => task.id == taskId);
+        if (index < 0) return;
+        unawaited(_showEditTaskSheet(_tasks[index]));
+      },
+      onToggleTask: (taskId) async {
+        final index = _tasks.indexWhere((task) => task.id == taskId);
+        if (index < 0) return;
+        final task = _tasks[index];
+        if (!task.isCompleted && !_completingTaskIds.contains(task.id)) {
+          unawaited(widget.feedbackService.playLightHaptic());
+        }
+        await _toggleTask(task, quietCompletionFeedback: true);
+      },
+      isRemoving: (taskId) => _removingTaskIds.contains(taskId),
+      showCompletedStyle: (taskId) {
+        final index = _tasks.indexWhere((task) => task.id == taskId);
+        if (index < 0) return false;
+        return _showsCompletedStyle(_tasks[index]);
+      },
     );
   }
 
@@ -1226,6 +1287,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         AppStorage.shouldShowInputGuidance(),
         AppStorage.shouldShowInboxGuidance(),
         AppStorage.shouldShowFavoriteGuidance(),
+        AppStorage.loadDailyMemo(DateTime.now()),
       ]);
       if (!mounted) return;
 
@@ -1235,6 +1297,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         _showInputGuidance = results[2] as bool;
         _showInboxGuidance = results[3] as bool;
         _showFavoriteGuidance = results[4] as bool;
+        _todayMemoText = results[5] as String;
       });
     } catch (error, stack) {
       debugPrint('Failed to load app metadata: $error');
@@ -1467,7 +1530,9 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       }
 
       if (!await widget.taskNotificationService.hasPermissions()) {
-        await widget.taskNotificationService.requestPermissions();
+        final granted =
+            await widget.taskNotificationService.requestPermissions();
+        if (!granted) return;
       }
 
       await widget.taskNotificationService.scheduleTaskNotification(task);
@@ -2054,6 +2119,11 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       if (mounted) {
         _showImportantFeedback(important: important);
       }
+      if (task.isInbox) return;
+      _scheduleDeferredLayout(
+        taskId: task.id,
+        sortMode: TaskSortMode.priority,
+      );
     } catch (error, stack) {
       debugPrint('Failed to update important: $error');
       debugPrint(stack.toString());
@@ -2085,6 +2155,9 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     Task task, {
     bool promptForTimeOnOpen = false,
   }) async {
+    Future<void> rescheduleNotification() =>
+        _scheduleTaskNotificationIfNeeded(task);
+
     await TaskDueDateTimeSheet.show(
       context,
       initialDueDate: task.dueDate,
@@ -2094,8 +2167,15 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       notificationPreferences: widget.notificationPreferences,
       notificationsFeatureEnabled: kTaskNotificationsEnabled,
       checkNotificationPermission: widget.taskNotificationService.hasPermissions,
-      onRequestNotificationPermission:
-          widget.taskNotificationService.requestPermissions,
+      onRequestNotificationPermission: () async {
+        final granted =
+            await widget.taskNotificationService.requestPermissions();
+        if (granted) {
+          await rescheduleNotification();
+        }
+        return granted;
+      },
+      onNotificationReschedule: rescheduleNotification,
       onDueDateChanged: (dueDate) => _applyDueDate(task, dueDate),
       onReminderTimeChanged: (reminderTime) =>
           _applyReminderTime(task, reminderTime),
@@ -2125,12 +2205,12 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
       unawaited(
         widget.analyticsService.logDeadlineSet(daysUntilDue: daysUntilDue),
       );
-      if (task.isInbox) return;
-      _scheduleDeferredLayout(
-        taskId: task.id,
-        sortMode: TaskSortMode.dueDate,
-      );
     }
+    if (task.isInbox) return;
+    _scheduleDeferredLayout(
+      taskId: task.id,
+      sortMode: TaskSortMode.dueDate,
+    );
   }
 
   Future<void> _applyReminderTime(Task task, TimeOfDay? reminderTime) async {
@@ -2445,6 +2525,15 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                       tasks: _tasks,
                       onCalendarDayTap: _showCalendarDaySheet,
                       onOpenTodayFocusSheet: _showTodayFocusTaskSheet,
+                      onImportantSummaryTap: () => _showDashboardSummarySheet(
+                        TodayFocusFilterKind.important,
+                      ),
+                      onTodaySummaryTap: () => _showDashboardSummarySheet(
+                        TodayFocusFilterKind.dueToday,
+                      ),
+                      onWeekSummaryTap: () => _showDashboardSummarySheet(
+                        TodayFocusFilterKind.dueWithin7Days,
+                      ),
                       categoryCounts: _categoryIncompleteCounts,
                     ),
                   ),
@@ -2576,6 +2665,12 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                     key: const ValueKey('flowdo_today_page'),
                     embedded: true,
                     tasks: _tasks,
+                    memoText: _todayMemoText,
+                    onMemoChanged: (text) async {
+                      await AppStorage.saveDailyMemo(DateTime.now(), text);
+                      if (!mounted) return;
+                      setState(() => _todayMemoText = text.trim());
+                    },
                     onRoutineToggle: (task) =>
                         unawaited(_toggleTask(task)),
                   ),
