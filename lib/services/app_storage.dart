@@ -35,6 +35,9 @@ class AppStorage {
   static const _favoriteGuidanceSeenKey = 'flowdo_favorite_guidance_seen';
   static const _notificationPermissionPromptedKey =
       'flowdo_notification_permission_prompted';
+  static const _weatherLocationPromptedKey = 'flowdo_weather_location_prompted';
+  static const _weatherUseCurrentLocationKey =
+      'flowdo_weather_use_current_location';
   static const _dailyMemosKey = 'flowdo_daily_memos';
   static const _maxPrefsAttempts = 20;
   static const _prefsRetryBaseDelay = Duration(milliseconds: 100);
@@ -849,6 +852,52 @@ class AppStorage {
       debugPrint('Failed to mark notification permission prompt: $error');
       debugPrint(stack.toString());
       return false;
+    }
+  }
+
+  /// 初回起動時の天気位置情報確認をまだ行っていなければ true
+  static Future<bool> shouldPromptWeatherLocation() async {
+    try {
+      final prefs = await _ensurePrefs();
+      if (prefs == null) return false;
+      return !(prefs.getBool(_weatherLocationPromptedKey) ?? false);
+    } catch (error, stack) {
+      debugPrint('Failed to read weather location prompt flag: $error');
+      debugPrint(stack.toString());
+      return false;
+    }
+  }
+
+  static Future<void> markWeatherLocationPrompted() async {
+    try {
+      final prefs = await _ensurePrefs();
+      if (prefs == null) return;
+      await prefs.setBool(_weatherLocationPromptedKey, true);
+    } catch (error, stack) {
+      debugPrint('Failed to save weather location prompt flag: $error');
+      debugPrint(stack.toString());
+    }
+  }
+
+  static Future<bool> loadWeatherUseCurrentLocation() async {
+    try {
+      final prefs = await _ensurePrefs();
+      return prefs?.getBool(_weatherUseCurrentLocationKey) ?? false;
+    } catch (error, stack) {
+      debugPrint('Failed to load weather location preference: $error');
+      debugPrint(stack.toString());
+      return false;
+    }
+  }
+
+  static Future<void> saveWeatherUseCurrentLocation(bool value) async {
+    try {
+      final prefs = await _ensurePrefs();
+      if (prefs == null) return;
+      await prefs.setBool(_weatherUseCurrentLocationKey, value);
+    } catch (error, stack) {
+      debugPrint('Failed to save weather location preference: $error');
+      debugPrint(stack.toString());
     }
   }
 

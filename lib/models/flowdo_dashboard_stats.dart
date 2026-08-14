@@ -3,23 +3,6 @@ import 'task.dart';
 import 'task_repeat_type.dart';
 import '../screens/today_page.dart';
 
-/// ダッシュボード用の天気スナップショット（将来 API 連携予定・現状はダミー）
-class DashboardWeatherSnapshot {
-  const DashboardWeatherSnapshot({
-    this.locationLabel = '東京',
-    this.temperatureCelsius = 31,
-    this.precipitationPercent = 10,
-    this.weatherIconEmoji = '☀️',
-  });
-
-  final String locationLabel;
-  final int temperatureCelsius;
-  final int precipitationPercent;
-  final String weatherIconEmoji;
-
-  static const dummy = DashboardWeatherSnapshot();
-}
-
 /// 未完了タスクのサマリー件数
 class DashboardTaskSummaryCounts {
   const DashboardTaskSummaryCounts({
@@ -104,14 +87,12 @@ class FlowDoDashboardStats {
     required this.counts,
     required this.routine,
     required this.achievement,
-    required this.weather,
     required this.streakDays,
   });
 
   final DashboardTaskSummaryCounts counts;
   final DashboardRoutineStats routine;
   final TodayAchievementStats achievement;
-  final DashboardWeatherSnapshot weather;
 
   /// 将来 HealthKit 等と連携予定・現状はダミー
   final int streakDays;
@@ -119,7 +100,6 @@ class FlowDoDashboardStats {
   factory FlowDoDashboardStats.fromTasks({
     required List<Task> tasks,
     DateTime? referenceToday,
-    DashboardWeatherSnapshot weather = DashboardWeatherSnapshot.dummy,
     int streakDays = 12,
   }) {
     final today = referenceToday ?? DateTime.now();
@@ -136,7 +116,6 @@ class FlowDoDashboardStats {
         tasks: tasks,
         referenceToday: today,
       ),
-      weather: weather,
       streakDays: streakDays,
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/category_item.dart';
+import '../models/dashboard_weather_snapshot.dart';
 import '../models/flowdo_calendar.dart';
 import '../models/task.dart';
 import '../models/flowdo_dashboard_stats.dart';
@@ -35,6 +36,7 @@ class HomeDashboard extends StatefulWidget {
     this.onImportantSummaryTap,
     this.onOpenTodayPage,
     this.todayMemoText = '',
+    this.weather = DashboardWeatherSnapshot.fallback,
     this.today,
   });
 
@@ -46,6 +48,7 @@ class HomeDashboard extends StatefulWidget {
   final VoidCallback? onImportantSummaryTap;
   final VoidCallback? onOpenTodayPage;
   final String todayMemoText;
+  final DashboardWeatherSnapshot weather;
   final DateTime? today;
 
   @override
@@ -125,6 +128,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   tasks: widget.tasks,
                   today: widget.today,
                   todayMemoText: widget.todayMemoText,
+                  weather: widget.weather,
                   onOpenTodayPage: widget.onOpenTodayPage,
                   onTodaySummaryTap: widget.onTodaySummaryTap,
                   onImportantSummaryTap: widget.onImportantSummaryTap,
@@ -567,6 +571,7 @@ class _FlowDoStatsDashboardPage extends StatelessWidget {
     required this.tasks,
     this.today,
     this.todayMemoText = '',
+    this.weather = DashboardWeatherSnapshot.fallback,
     this.onOpenTodayPage,
     this.onTodaySummaryTap,
     this.onImportantSummaryTap,
@@ -576,6 +581,7 @@ class _FlowDoStatsDashboardPage extends StatelessWidget {
   final List<Task> tasks;
   final DateTime? today;
   final String todayMemoText;
+  final DashboardWeatherSnapshot weather;
   final VoidCallback? onOpenTodayPage;
   final VoidCallback? onTodaySummaryTap;
   final VoidCallback? onImportantSummaryTap;
@@ -616,7 +622,7 @@ class _FlowDoStatsDashboardPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            DashboardWeatherCard(weather: stats.weather),
+            DashboardWeatherCard(weather: weather),
             const SizedBox(height: 12),
             _equalHeightRow(
               left: DashboardStatCard(

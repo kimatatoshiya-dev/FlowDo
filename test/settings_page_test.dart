@@ -34,6 +34,8 @@ void main() {
         onSignInWithGoogle: () async {},
         onSignInWithApple: () async {},
         onSignOut: () async {},
+        weatherUseCurrentLocation: false,
+        onWeatherUseCurrentLocationChanged: (_) {},
         versionInfo: versionInfo,
       ),
     );

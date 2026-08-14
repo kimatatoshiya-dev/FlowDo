@@ -35,6 +35,8 @@ class SettingsPage extends StatefulWidget {
     required this.onSignInWithGoogle,
     required this.onSignInWithApple,
     required this.onSignOut,
+    required this.weatherUseCurrentLocation,
+    required this.onWeatherUseCurrentLocationChanged,
     this.versionInfo,
   });
 
@@ -53,6 +55,8 @@ class SettingsPage extends StatefulWidget {
   final Future<void> Function() onSignInWithGoogle;
   final Future<void> Function() onSignInWithApple;
   final Future<void> Function() onSignOut;
+  final bool weatherUseCurrentLocation;
+  final ValueChanged<bool> onWeatherUseCurrentLocationChanged;
   final AppVersionInfo? versionInfo;
 
   @override
@@ -372,6 +376,18 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   );
                 },
+              ),
+            ],
+          ),
+          const SettingsSectionHeader(title: '天気'),
+          SettingsGroup(
+            children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.location_on_outlined),
+                title: const Text('現在地の天気を表示'),
+                subtitle: const Text('オフの場合は東京を表示'),
+                value: widget.weatherUseCurrentLocation,
+                onChanged: widget.onWeatherUseCurrentLocationChanged,
               ),
             ],
           ),

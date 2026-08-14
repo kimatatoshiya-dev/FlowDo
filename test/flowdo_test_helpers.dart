@@ -1,10 +1,14 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flowdo/config/app_features.dart';
 import 'package:flowdo/main.dart';
+import 'package:flowdo/models/weather_info.dart';
 import 'package:flowdo/services/app_storage.dart';
+import 'package:flowdo/services/weather_service.dart';
 import 'package:flowdo/services/analytics/noop_analytics_service.dart';
 import 'package:flowdo/services/auth/noop_auth_service.dart';
 import 'package:flowdo/services/task_notification_service.dart';
@@ -34,7 +38,19 @@ Future<void> pumpFlowDoApp(
   Map<String, Object> initialPreferences = const {},
 }) async {
   SharedPreferences.resetStatic();
-  SharedPreferences.setMockInitialValues(initialPreferences);
+  SharedPreferences.setMockInitialValues({
+    'flowdo_weather_location_prompted': true,
+    WeatherService.cacheKey: jsonEncode(
+      WeatherInfo(
+        temperature: 25,
+        weatherCode: 0,
+        precipitationProbability: 10,
+        city: '東京',
+        updatedAt: DateTime.now(),
+      ).toJson(),
+    ),
+    ...initialPreferences,
+  });
   AppStorage.resetForTesting();
 
   await tester.pumpWidget(const SizedBox.shrink());

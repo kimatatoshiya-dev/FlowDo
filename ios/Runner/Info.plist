@@ -49,6 +49,8 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>開発中の Flutter ツールがアプリに接続してデバッグするために使用します。</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>現在地の天気を表示するために使用します。</string>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>時間指定タスクの開始前にリマインダーをお届けするために使用します。</string>
 	<key>UIApplicationSceneManifest</key>

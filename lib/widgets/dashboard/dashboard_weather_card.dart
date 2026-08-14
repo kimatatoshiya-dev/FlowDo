@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../../models/flowdo_dashboard_stats.dart';
+import '../../models/dashboard_weather_snapshot.dart';
 import '../../theme/app_theme.dart';
 import 'dashboard_surface_card.dart';
 
-/// Dashboard 最上部の天気カード（将来 Weather API 差し替え用）
+/// Dashboard 最上部の天気カード
 class DashboardWeatherCard extends StatelessWidget {
   const DashboardWeatherCard({
     super.key,
@@ -18,6 +18,9 @@ class DashboardWeatherCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<FlowDoColors>()!;
+    final temperatureLabel = weather.isUnavailable
+        ? '--'
+        : '${weather.temperatureCelsius}';
 
     return DashboardSurfaceCard(
       key: const ValueKey('dashboard_weather_card'),
@@ -31,7 +34,7 @@ class DashboardWeatherCard extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Text(
-            '${weather.temperatureCelsius}℃',
+            '$temperatureLabel℃',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                   letterSpacing: -0.4,
@@ -48,14 +51,16 @@ class DashboardWeatherCard extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                       ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  '降水確率 ${weather.precipitationPercent}%',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colors.secondaryLabel,
-                        fontWeight: FontWeight.w500,
-                      ),
-                ),
+                if (weather.showPrecipitation) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '降水確率 ${weather.precipitationPercent}%',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.secondaryLabel,
+                          fontWeight: FontWeight.w500,
+                        ),
+                  ),
+                ],
               ],
             ),
           ),

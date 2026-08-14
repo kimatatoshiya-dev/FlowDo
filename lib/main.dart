@@ -12,6 +12,7 @@ import 'debug/flowdo_home_loop_diag.dart';
 import 'debug/persist_device_verify.dart';
 import 'debug/startup_trace.dart';
 import 'debug/task_persistence_diag.dart';
+import 'models/dashboard_weather_snapshot.dart';
 import 'models/category_item.dart';
 import 'models/pending_category_task_sections.dart';
 import 'models/task.dart';
@@ -40,6 +41,7 @@ import 'services/feedback_service.dart';
 import 'services/task_notification_service.dart';
 import 'services/ai_categorizer_service.dart';
 import 'services/task_organizer_service.dart';
+import 'services/weather_service.dart';
 import 'services/tasks/local_task_repository.dart';
 import 'services/tasks/task_repository.dart';
 import 'theme/app_theme.dart';
@@ -509,6 +511,9 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   int? _pendingTodayFocusCelebrationTaskId;
   Set<int>? _inboxOrganizationCelebratedIds;
   String _todayMemoText = '';
+  DashboardWeatherSnapshot _dashboardWeather = DashboardWeatherSnapshot.fallback;
+  bool _weatherUseCurrentLocation = false;
+  final WeatherService _weatherService = WeatherService();
 
   @override
   void initState() {
@@ -532,6 +537,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         startupTrace('FlowDoHomePage.runAfterFirstFrame callback start');
         await _loadMetadata();
         startupTrace('FlowDoHomePage._loadMetadata done');
+        await _bootstrapWeather(showLocationPrompt: true);
         await _consumeNotificationLaunch();
       }),
     );
@@ -598,6 +604,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     }
     if (state == AppLifecycleState.resumed) {
       unawaited(_purgeExpiredCompletedTasks());
+      unawaited(_bootstrapWeather(showLocationPrompt: false));
     }
   }
 
@@ -1300,6 +1307,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         AppStorage.shouldShowInboxGuidance(),
         AppStorage.shouldShowFavoriteGuidance(),
         AppStorage.loadDailyMemo(DateTime.now()),
+        AppStorage.loadWeatherUseCurrentLocation(),
       ]);
       if (!mounted) return;
 
@@ -1312,6 +1320,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         _showInboxGuidance = results[3] as bool;
         _showFavoriteGuidance = results[4] as bool;
         _todayMemoText = results[5] as String;
+        _weatherUseCurrentLocation = results[6] as bool;
       });
     } catch (error, stack) {
       debugPrint('Failed to load app metadata: $error');
@@ -1321,6 +1330,56 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         _categories = CategoryItem.defaults();
       });
     }
+  }
+
+  Future<void> _bootstrapWeather({required bool showLocationPrompt}) async {
+    if (!mounted) return;
+
+    if (showLocationPrompt && await AppStorage.shouldPromptWeatherLocation()) {
+      final useCurrentLocation = await _showWeatherLocationPrompt();
+      await AppStorage.markWeatherLocationPrompted();
+      await AppStorage.saveWeatherUseCurrentLocation(useCurrentLocation);
+      if (!mounted) return;
+      setState(() => _weatherUseCurrentLocation = useCurrentLocation);
+    }
+
+    await _refreshDashboardWeather();
+  }
+
+  Future<void> _refreshDashboardWeather() async {
+    final snapshot = await _weatherService.loadDashboardWeather(
+      useCurrentLocation: _weatherUseCurrentLocation,
+    );
+    if (!mounted) return;
+    setState(() => _dashboardWeather = snapshot);
+  }
+
+  Future<bool> _showWeatherLocationPrompt() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('天気の表示'),
+        content: const Text('現在地を利用しますか？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('東京を表示'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('現在地を使う'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  Future<void> _setWeatherUseCurrentLocation(bool value) async {
+    if (_weatherUseCurrentLocation == value) return;
+    setState(() => _weatherUseCurrentLocation = value);
+    await AppStorage.saveWeatherUseCurrentLocation(value);
+    await _refreshDashboardWeather();
   }
 
   Future<void> _purgeExpiredCompletedTasks() async {
@@ -2393,6 +2452,8 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
             widget.authService.signInWithApple,
           ),
           onSignOut: widget.authService.signOut,
+          weatherUseCurrentLocation: _weatherUseCurrentLocation,
+          onWeatherUseCurrentLocationChanged: _setWeatherUseCurrentLocation,
         ),
       ),
     );
@@ -2614,6 +2675,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                       ),
                       onOpenTodayPage: _openTodayPage,
                       todayMemoText: _todayMemoText,
+                      weather: _dashboardWeather,
                     ),
                   ),
                   if (!_isLoading)
