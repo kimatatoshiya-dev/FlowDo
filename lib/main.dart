@@ -13,6 +13,7 @@ import 'debug/persist_device_verify.dart';
 import 'debug/startup_trace.dart';
 import 'debug/task_persistence_diag.dart';
 import 'models/category_item.dart';
+import 'models/pending_category_task_sections.dart';
 import 'models/task.dart';
 import 'models/task_priority.dart';
 import 'models/task_edit_result.dart';
@@ -471,6 +472,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
   bool _showInboxGuidance = false;
   bool _showFavoriteGuidance = false;
   final Set<String> _categoryFilterIds = {};
+  final Set<String> _collapsedCategorySectionIds = {};
   final Set<String> _inboxSelectedCategoryIds = {};
   TaskSortMode _sortMode = TaskSortMode.priority;
   Timer? _layoutChangeTimer;
@@ -1774,6 +1776,26 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     });
   }
 
+  void _toggleCategorySectionCollapsed(String categoryId) {
+    setState(() {
+      if (_collapsedCategorySectionIds.contains(categoryId)) {
+        _collapsedCategorySectionIds.remove(categoryId);
+      } else {
+        _collapsedCategorySectionIds.add(categoryId);
+      }
+    });
+  }
+
+  List<PendingCategoryTaskSection>? _pendingCategorySections(
+    List<Task> pendingTasks,
+  ) {
+    return buildPendingCategoryTaskSections(
+      pendingTasks: pendingTasks,
+      selectedCategoryIds: _categoryFilterIds,
+      categories: _categories,
+    );
+  }
+
   List<String> _extractTitles(String raw) {
     return raw
         .split('\n')
@@ -2464,6 +2486,7 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     final recentTasks = _recentlyAddedTasks();
     final pendingTasks = _filteredTasks(completed: false);
     final completedTasks = _filteredTasks(completed: true);
+    final pendingCategorySections = _pendingCategorySections(pendingTasks);
     final hasFilter = _categoryFilterIds.isNotEmpty;
     final hasVisibleTasks =
         recentTasks.isNotEmpty ||
@@ -2734,7 +2757,14 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                       SliverToBoxAdapter(
                         child: GroupedTaskList(
                           title: '未完了',
-                          tasks: pendingTasks,
+                          tasks: pendingCategorySections == null
+                              ? pendingTasks
+                              : const [],
+                          categorySections: pendingCategorySections,
+                          collapsedCategorySectionIds:
+                              _collapsedCategorySectionIds,
+                          onToggleCategorySectionCollapsed:
+                              _toggleCategorySectionCollapsed,
                           categories: _categories,
                           showCompletedStyle: _showsCompletedStyle,
                           isLayoutHighlight: _isLayoutHighlight,

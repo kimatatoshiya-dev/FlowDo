@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/category_item.dart';
+import '../models/pending_category_task_sections.dart';
 import '../models/task.dart';
 import '../models/task_priority.dart';
 import '../models/task_repeat_type.dart';
@@ -863,11 +864,17 @@ class GroupedTaskList extends StatelessWidget {
     this.showInboxGuidance = false,
     this.onPromoteTask,
     this.showSectionTitle = true,
+    this.categorySections,
+    this.collapsedCategorySectionIds = const {},
+    this.onToggleCategorySectionCollapsed,
   });
 
   final String title;
   final List<Task> tasks;
   final List<CategoryItem> categories;
+  final List<PendingCategoryTaskSection>? categorySections;
+  final Set<String> collapsedCategorySectionIds;
+  final ValueChanged<String>? onToggleCategorySectionCollapsed;
   final bool Function(Task task) showCompletedStyle;
   final bool Function(Task task) isRemoving;
   final bool Function(Task task)? isLayoutHighlight;
@@ -946,11 +953,117 @@ class GroupedTaskList extends StatelessWidget {
     );
   }
 
+  Widget _buildCategorySectionHeader(
+    BuildContext context,
+    FlowDoColors colors,
+    PendingCategoryTaskSection section,
+  ) {
+    final collapsed = collapsedCategorySectionIds.contains(section.category.id);
+    final canCollapse = onToggleCategorySectionCollapsed != null;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: canCollapse
+            ? () => onToggleCategorySectionCollapsed!(section.category.id)
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+          child: Row(
+            children: [
+              if (canCollapse)
+                Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: Icon(
+                    collapsed
+                        ? Icons.play_arrow_rounded
+                        : Icons.arrow_drop_down_rounded,
+                    size: 22,
+                    color: colors.secondaryLabel,
+                  ),
+                ),
+              CircleAvatar(
+                radius: 5,
+                backgroundColor: section.category.color,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${section.category.name}　${section.tasks.length}件',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategorySectionedPendingList(
+    BuildContext context,
+    FlowDoColors colors,
+  ) {
+    final sections = categorySections!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) ...[
+          if (sectionIndex > 0) const SizedBox(height: 12),
+          Container(
+            decoration: BoxDecoration(
+              color: colors.groupedSurface,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildCategorySectionHeader(context, colors, sections[sectionIndex]),
+                Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: colors.separator.withValues(alpha: 0.65),
+                ),
+                if (!collapsedCategorySectionIds
+                    .contains(sections[sectionIndex].category.id))
+                  Column(
+                    children: [
+                      for (var i = 0;
+                          i < sections[sectionIndex].tasks.length;
+                          i++)
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeOut,
+                          alignment: Alignment.topCenter,
+                          child: _taskTileFor(
+                            sections[sectionIndex].tasks[i],
+                            showDivider: i < sections[sectionIndex].tasks.length - 1,
+                          ),
+                        ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (tasks.isEmpty) return const SizedBox.shrink();
+    final sectionedTasks = categorySections;
+    if (tasks.isEmpty &&
+        (sectionedTasks == null || sectionedTasks.isEmpty)) {
+      return const SizedBox.shrink();
+    }
 
     final colors = Theme.of(context).extension<FlowDoColors>()!;
+    final useCategorySections =
+        !isCompletedList && sectionedTasks != null && sectionedTasks.isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -1016,6 +1129,8 @@ class GroupedTaskList extends StatelessWidget {
                   ),
               ],
             )
+          else if (useCategorySections)
+            _buildCategorySectionedPendingList(context, colors)
           else
             _buildPendingGroupedList(context, colors),
         ],
