@@ -47,7 +47,6 @@ import 'widgets/auth_gate.dart';
 import 'widgets/category_bar.dart';
 import 'widgets/category_name_dialog.dart';
 import 'widgets/calendar_day_task_sheet.dart';
-import 'widgets/dashboard_category_task_sheet.dart';
 import 'widgets/dashboard_summary_task_sheet.dart';
 import 'widgets/home_dashboard.dart';
 import 'widgets/inbox_category_picker_sheet.dart';
@@ -835,58 +834,6 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
         if (index < 0) return false;
         return _showsCompletedStyle(_tasks[index]);
       },
-    );
-  }
-
-  Future<void> _showDashboardCategorySheet(CategoryItem category) async {
-    _refreshTodayFocusSheet();
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) => ValueListenableBuilder<int>(
-        valueListenable: _todayFocusSheetRevision,
-        builder: (context, _, __) {
-          final tasks = sortTaskList(
-            _tasks
-                .where(
-                  (task) =>
-                      task.categoryId == category.id && !task.isCompleted,
-                )
-                .toList(),
-            TaskSortMode.priority,
-            _categories,
-          );
-
-          return DashboardCategoryTaskSheet(
-            category: category,
-            tasks: tasks,
-            referenceToday: dateOnly(DateTime.now()),
-            onTaskTap: (taskId) {
-              Navigator.pop(context);
-              final index = _tasks.indexWhere((task) => task.id == taskId);
-              if (index < 0) return;
-              unawaited(_showEditTaskSheet(_tasks[index]));
-            },
-            onToggleTask: (taskId) async {
-              final index = _tasks.indexWhere((task) => task.id == taskId);
-              if (index < 0) return;
-              final task = _tasks[index];
-              if (!task.isCompleted &&
-                  !_completingTaskIds.contains(task.id)) {
-                unawaited(widget.feedbackService.playLightHaptic());
-              }
-              await _toggleTask(task, quietCompletionFeedback: true);
-            },
-            isRemoving: (taskId) => _removingTaskIds.contains(taskId),
-            showCompletedStyle: (taskId) {
-              final index = _tasks.indexWhere((task) => task.id == taskId);
-              if (index < 0) return false;
-              return _showsCompletedStyle(_tasks[index]);
-            },
-          );
-        },
-      ),
     );
   }
 
@@ -2093,22 +2040,6 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
     ];
   }
 
-  List<CategoryIncompleteCount> get _categoryIncompleteCounts {
-    final counts = <String, int>{};
-    for (final task in _tasks) {
-      if (task.isCompleted) continue;
-      counts.update(task.categoryId, (value) => value + 1, ifAbsent: () => 1);
-    }
-
-    final result = <CategoryIncompleteCount>[];
-    for (final category in CategoryItem.filterBarCategories(_categories)) {
-      final count = counts[category.id];
-      if (count == null || count == 0) continue;
-      result.add(CategoryIncompleteCount(category: category, count: count));
-    }
-    return result;
-  }
-
   Future<void> _showEditTaskSheet(Task task) async {
     final result = await TaskEditSheet.show(
       context,
@@ -2681,8 +2612,8 @@ class _FlowDoHomePageState extends State<FlowDoHomePage>
                       onWeekSummaryTap: () => _showDashboardSummarySheet(
                         TodayFocusFilterKind.dueWithin7Days,
                       ),
-                      categoryCounts: _categoryIncompleteCounts,
-                      onCategoryCountTap: _showDashboardCategorySheet,
+                      onOpenTodayPage: _openTodayPage,
+                      todayMemoText: _todayMemoText,
                     ),
                   ),
                   if (!_isLoading)

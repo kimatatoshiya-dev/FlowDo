@@ -81,7 +81,6 @@ void main() {
           body: HomeDashboard(
             tasks: sampleTasks(),
             today: DateTime(2026, 8, 11),
-            categoryCounts: const [],
             onCalendarDayTap: (_, __) {},
             onOpenTodayFocusSheet: () {},
           ),
@@ -116,7 +115,6 @@ void main() {
           body: HomeDashboard(
             tasks: sampleTasks(),
             today: DateTime(2026, 8, 11),
-            categoryCounts: const [],
             onCalendarDayTap: (_, __) {},
             onOpenTodayFocusSheet: () {},
             onTodaySummaryTap: () => todayTapped = true,
@@ -144,7 +142,6 @@ void main() {
           body: HomeDashboard(
             tasks: sampleTasks(),
             today: DateTime(2026, 8, 11),
-            categoryCounts: const [],
             onCalendarDayTap: (_, __) {},
             onOpenTodayFocusSheet: () {},
           ),
@@ -174,7 +171,6 @@ void main() {
           body: HomeDashboard(
             tasks: sampleTasks(),
             today: DateTime(2026, 8, 11),
-            categoryCounts: const [],
             onCalendarDayTap: (_, __) {},
             onOpenTodayFocusSheet: () {},
           ),
@@ -203,7 +199,6 @@ void main() {
           body: HomeDashboard(
             tasks: sampleTasks(),
             today: DateTime(2026, 8, 11),
-            categoryCounts: const [],
             onCalendarDayTap: (_, __) {},
             onOpenTodayFocusSheet: () => opened = true,
           ),
@@ -228,7 +223,6 @@ void main() {
           body: HomeDashboard(
             tasks: sampleTasks(),
             today: DateTime(2026, 8, 11),
-            categoryCounts: const [],
             onCalendarDayTap: (day, _) => tappedDay = day,
             onOpenTodayFocusSheet: () {},
           ),
@@ -273,7 +267,6 @@ void main() {
               ),
             ],
             today: today,
-            categoryCounts: const [],
             onCalendarDayTap: (day, referenceToday) async {
               await CalendarDayTaskSheet.show(
                 tester.element(find.byType(HomeDashboard)),
@@ -364,8 +357,9 @@ void main() {
     expect(find.byType(TaskCompletionToggle), findsNWidgets(2));
   });
 
-  testWidgets('2ページ目にダッシュボード統計を表示する', (WidgetTester tester) async {
-    CategoryItem? tappedCategory;
+  testWidgets('2ページ目にホームダッシュボードを表示する', (WidgetTester tester) async {
+    var todayPageOpened = false;
+    var importantTapped = false;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -374,15 +368,11 @@ void main() {
           body: HomeDashboard(
             tasks: sampleTasks(),
             today: DateTime(2026, 8, 11),
-            categoryCounts: [
-              CategoryIncompleteCount(
-                category: CategoryItem.defaults()[1],
-                count: 18,
-              ),
-            ],
+            todayMemoText: '郵便局\nコピー',
             onCalendarDayTap: (_, __) {},
             onOpenTodayFocusSheet: () {},
-            onCategoryCountTap: (category) => tappedCategory = category,
+            onOpenTodayPage: () => todayPageOpened = true,
+            onImportantSummaryTap: () => importantTapped = true,
           ),
         ),
       ),
@@ -391,23 +381,32 @@ void main() {
     await tester.drag(find.byType(PageView), const Offset(-800, 0));
     await tester.pumpAndSettle();
 
-    expect(find.text('📊 ダッシュボード'), findsOneWidget);
-    expect(find.textContaining('現在地'), findsOneWidget);
-    expect(find.text('☀️31℃'), findsOneWidget);
-    expect(find.text('☔40%'), findsOneWidget);
-    expect(find.text('カテゴリー'), findsOneWidget);
-    expect(find.text('仕事'), findsOneWidget);
-    expect(find.text('18件'), findsOneWidget);
-    expect(find.text('今日達成率'), findsOneWidget);
+    expect(find.byKey(const ValueKey('dashboard_weather_card')), findsOneWidget);
+    expect(find.text('東京'), findsOneWidget);
+    expect(find.text('31℃'), findsOneWidget);
+    expect(find.text('降水確率 10%'), findsOneWidget);
+    expect(find.byKey(const ValueKey('dashboard_stat_today')), findsOneWidget);
+    expect(find.byKey(const ValueKey('dashboard_stat_important')), findsOneWidget);
+    expect(find.byKey(const ValueKey('dashboard_stat_within7days')), findsOneWidget);
+    expect(find.byKey(const ValueKey('dashboard_stat_routine')), findsOneWidget);
+    expect(find.text('1件'), findsNWidgets(3));
+    expect(find.text('0 / 0'), findsOneWidget);
+    expect(find.text('今日の達成率'), findsOneWidget);
     expect(find.text('0%'), findsOneWidget);
-    expect(find.text('今月完了数'), findsOneWidget);
-    expect(find.text('0件'), findsOneWidget);
-    expect(find.textContaining('仕事タスクが多め'), findsOneWidget);
+    expect(find.text('12日'), findsOneWidget);
+    expect(find.byKey(const ValueKey('dashboard_memo_card')), findsOneWidget);
+    expect(find.textContaining('郵便局'), findsOneWidget);
+    expect(find.textContaining('コピー'), findsOneWidget);
+    expect(find.text('📊 ダッシュボード'), findsNothing);
+    expect(find.text('カテゴリー'), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey('dashboard_category_row_work')));
+    await tester.tap(find.byKey(const ValueKey('dashboard_stat_important')));
     await tester.pump();
+    expect(importantTapped, isTrue);
 
-    expect(tappedCategory?.name, '仕事');
+    await tester.tap(find.byKey(const ValueKey('dashboard_stat_routine')));
+    await tester.pump();
+    expect(todayPageOpened, isTrue);
   });
 
   test('categoryEmoji はカテゴリー名に応じた絵文字を返す', () {

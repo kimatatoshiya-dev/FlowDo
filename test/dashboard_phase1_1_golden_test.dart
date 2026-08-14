@@ -21,7 +21,6 @@ void main() {
           body: HomeDashboard(
             tasks: sampleTasks(),
             today: DateTime(2026, 8, 11),
-            categoryCounts: const [],
             onCalendarDayTap: (_, __) {},
             onOpenTodayFocusSheet: () {},
           ),
